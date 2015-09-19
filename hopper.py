@@ -12,7 +12,6 @@ import hopperUtil
 
 class Hopper:
     def __init__(self, N, eng, matlabHopper, name=''):
-        self.model = ConcreteModel()
         self.model_disc = []
         self.positionMax = 10
         self.rotationMax = 2*np.pi
@@ -29,7 +28,7 @@ class Hopper:
         self.p = []
         self.pd = []
         self.R = []
-        self.dt = 0.1
+        self.dtBounds = (0.05, 0.2)
         self.c = []
         self.p_MDT = -2
         self.P_MDT = -1
@@ -87,16 +86,17 @@ class Hopper:
 
     def loadResults(self, m):
         data = dict()
+        data['t'] =     matlab.double(hopperUtil.extractTime(m).tolist())
         data['r'] =     matlab.double(hopperUtil.extractPostition(m).tolist())
         data['th'] =    matlab.double(hopperUtil.extractOrientation(m).tolist())
         data['r_hip'] = matlab.double(hopperUtil.extractHipPosition(m).tolist())
         data['p'] =     matlab.double(hopperUtil.extractRelativeFootPosition(m).tolist())
         data['f'] =     matlab.double(hopperUtil.extractFootForce(m).tolist())
         data['T'] =     matlab.double(hopperUtil.extractTotalTorque(m).tolist())
-        self.eng.loadResults(self.matlabHopper, data, self.dt, nargout=0)
+        self.eng.loadResults(self.matlabHopper, data, nargout=0)
 
     def constructPyomoModel(self):
-        model = self.model
+        model = ConcreteModel()
         model.R2_INDEX = Set(initialize=['x', 'z'])
         model.feet = Set(initialize=self.footnames)
         model.REGION_INDEX = RangeSet(0, len(self.regions)-1)
@@ -114,21 +114,23 @@ class Hopper:
                           [sin(theta),  cos(theta)]])
             vec = R*(self.regions[region]['normal'])
             if xz == 'x':
-                return vec[0]
+                return float(vec[0])
             else:
-                return vec[1]
+                return float(vec[1])
         model.basisVectors = Param(model.REGION_INDEX, model.BV_INDEX, model.R2_INDEX, initialize=_bvRule)
 
         def _hipOffsetRule(m, foot, xz):
             return self.hipOffset[foot][xz]
         model.hipOffset = Param(model.feet, model.R2_INDEX, initialize=_hipOffsetRule)
 
+        model.dt = Var(model.t, bounds=self.dtBounds, initialize=float(np.mean(self.dtBounds)))
         model.r = Var(model.R2_INDEX, model.t, bounds=(-self.positionMax, self.positionMax))
         model.v = Var(model.R2_INDEX, model.t, bounds=(-self.velocityMax, self.velocityMax))
         model.th = Var(model.t, bounds=(-self.rotationMax, self.rotationMax))
         model.w = Var(model.t, bounds=(-self.angularVelocityMax, self.angularVelocityMax))
         model.F = Var(model.R2_INDEX, model.t, bounds=(-self.forceMax, self.forceMax))
         model.f = Var(model.feet, model.R2_INDEX, model.t, bounds=(-self.forceMax, self.forceMax))
+        model.hipTorque = Var(model.feet, model.t, bounds=(-self.forceMax, self.forceMax))
         #model.beta = Var(model.feet, model.BV_INDEX, model.t, within=NonNegativeReals, bounds=(0, self.forceMax))
         model.T = Var(model.t, bounds=(-self.forceMax, self.forceMax))
         lb = {'x': -1, 'z': -1}
@@ -144,6 +146,11 @@ class Hopper:
         model.cth = Var(model.t, bounds=(-1,1))
         model.sth = Var(model.t, bounds=(-1,1))
 
+        # Fix final dt to zero
+        model.dt[model.t[-1]].value = 0.0
+        model.dt[model.t[-1]].fixed = True
+
+
         # Constraints for BRF vectors
         # to avoid warnings, we set breakpoints at or beyond the bounds
         numPieces = self.nOrientationSectors
@@ -157,13 +164,18 @@ class Hopper:
         def _sin(model, t, th):
             return sin(th)
 
-        model.pwCos = Piecewise(model.t, model.cth, model.th, pw_pts=bpts, pw_constr_type='EQ', pw_repn='SOS2', f_rule=_cos)
-        model.pwSin = Piecewise(model.t, model.sth, model.th, pw_pts=bpts, pw_constr_type='EQ', pw_repn='SOS2', f_rule=_sin)
+        model.pwCos = Piecewise(model.t, model.cth, model.th, pw_pts=bpts, pw_constr_type='EQ', pw_repn='CC', f_rule=_cos)
+        model.pwSin = Piecewise(model.t, model.sth, model.th, pw_pts=bpts, pw_constr_type='EQ', pw_repn='CC', f_rule=_sin)
 
         def _momentRule(m, t):
             return m.T[t] == sum(m.footRelativeToCOM[foot,'x',t]*m.f[foot,'z',t] - m.footRelativeToCOM[foot,'z',t]*m.f[foot, 'x',t] for foot in m.feet)
 
         model.momentAbountCOM = Constraint(model.t, rule=_momentRule)
+
+        #def _hipTorqueRule(m, foot, t):
+            #return m.hipTorque[foot, t] == m.p[foot,'x',t]*m.f[foot,'z',t] - m.p[foot,'z',t]*m.f[foot, 'x',t]
+
+        #model.hipTorqueConstraint = Constraint(model.feet, model.t, rule=_hipTorqueRule)
 
         def _forceRule(m, i, t):
             g = -1 if i == 'z' else 0
@@ -179,8 +191,8 @@ class Hopper:
             if t == self.N:
                 return Constraint.Skip
             else:
-                v_mid = m.v[i,t] + self.dt/2*m.F[i,t]
-                return m.r[i,t+1] == m.r[i, t] + self.dt*v_mid
+                v_mid = m.v[i,t] + m.dt[t]/2*m.F[i,t]
+                return m.r[i,t+1] == m.r[i, t] + m.dt[t]*v_mid
         model.positionConstraint = Constraint(model.R2_INDEX, model.t, rule=_positionRule)
 
         def _footPositionDefinition(m, foot, i, t):
@@ -191,7 +203,7 @@ class Hopper:
             if t == self.N:
                 return Constraint.Skip
             else:
-                return m.foot[foot, i, t+1] == m.foot[foot, i, t] + self.dt*m.pd[foot, i, t]
+                return m.foot[foot, i, t+1] == m.foot[foot, i, t] + m.dt[t]*m.pd[foot, i, t]
         model.footPositionConstraint = Constraint(model.feet, model.R2_INDEX, model.t, rule=_footPositionRule)
 
         def _footRelativeToCOMDefinition(m, foot, xz, t):
@@ -213,15 +225,15 @@ class Hopper:
             if t == self.N:
                 return Constraint.Skip
             else:
-                return m.pd[foot, xz, t + 1] == m.pd[foot, xz, t] + 0.5*self.dt*(m.pdd[foot, xz, t] + m.pdd[foot, xz, t + 1])
+                return m.pd[foot, xz, t + 1] == m.pd[foot, xz, t] + 0.5*m.dt[t]*(m.pdd[foot, xz, t] + m.pdd[foot, xz, t + 1])
         model.footVelocityConstraint = Constraint(model.feet, model.R2_INDEX, model.t, rule=_footVelocityRule)
 
         def _velocityRule(m, i, t):
             if t == self.N:
                 return Constraint.Skip
             else:
-                v_mid = m.v[i,t] + self.dt/2*m.F[i,t]
-                return m.v[i,t+1] == v_mid + self.dt/2*m.F[i,t+1]
+                v_mid = m.v[i,t] + m.dt[t]/2*m.F[i,t]
+                return m.v[i,t+1] == v_mid + m.dt[t]/2*m.F[i,t+1]
 
         model.velocityConstraint = Constraint(model.R2_INDEX, model.t, rule=_velocityRule)
 
@@ -229,8 +241,8 @@ class Hopper:
             if t == self.N:
                 return Constraint.Skip
             else:
-                w_mid = m.w[t] + self.dt/(2*self.momentOfInertia)*m.T[t]
-                return m.w[t+1] == w_mid + self.dt/(2*self.momentOfInertia)*m.T[t+1]
+                w_mid = m.w[t] + m.dt[t]/(2*self.momentOfInertia)*m.T[t]
+                return m.w[t+1] == w_mid + m.dt[t]/(2*self.momentOfInertia)*m.T[t+1]
 
         model.angularVelocityConstraint = Constraint(model.t, rule=_angularVelocityRule)
 
@@ -238,8 +250,8 @@ class Hopper:
             if t == self.N:
                 return Constraint.Skip
             else:
-                w_mid = m.w[t] + self.dt/(2*self.momentOfInertia)*m.T[t]
-                return m.th[t+1] == m.th[t] + self.dt*w_mid
+                w_mid = m.w[t] + m.dt[t]/(2*self.momentOfInertia)*m.T[t]
+                return m.th[t+1] == m.th[t] + m.dt[t]*w_mid
 
         model.orientationConstraint = Constraint(model.t, rule=_orientationRule)
 
@@ -262,13 +274,13 @@ class Hopper:
             b = np.atleast_1d(b)
             def _contactPositionConstraint(disjunctData, i):
                 m = disjunctData.model()
-                return A[i,0]*m.foot[foot, 'x', t] + A[i,1]*m.foot[foot, 'z', t] <= b[i]
+                return A[i,0]*m.foot[foot, 'x', t] + A[i,1]*m.foot[foot, 'z', t] <= float(b[i])
             disjunct.contactPositionConstraint = Constraint(range(A.shape[0]), rule=_contactPositionConstraint)
 
             def _hipPositionConstraint(disjunctData, i):
                 if self.regions[region]['mu'] == 0.:
                     m = disjunctData.model()
-                    return A[i,0]*(m.r['x', t] + m.hip[foot, 'x', t]) + A[i,1]*(m.r['z', t] + m.hip[foot, 'z', t]) <= b[i]
+                    return A[i,0]*(m.r['x', t] + m.hip[foot, 'x', t]) + A[i,1]*(m.r['z', t] + m.hip[foot, 'z', t]) <= float(b[i])
                 else:
                     return Constraint.Skip
             disjunct.hipPositionConstraint = Constraint(range(A.shape[0]), rule=_hipPositionConstraint)
@@ -324,7 +336,7 @@ class Hopper:
                 b = np.atleast_1d(b)
                 def _bodyPositionConstraint(disjunctData, i):
                     m = disjunctData.model()
-                    return A[i,0]*m.r['x', t] + A[i,1]*m.r['z', t] <= b[i]
+                    return A[i,0]*m.r['x', t] + A[i,1]*m.r['z', t] <= float(b[i])
                 disjunct.bodyPositionConstraint = Constraint(range(A.shape[0]), rule=_bodyPositionConstraint)
 
 
@@ -343,7 +355,7 @@ class Hopper:
 #         disjunctionTransform = BigM_Transformation()
         disjunctionTransform.apply_to(model)
 
-        self.model = model
+        return model
 
 def testHopper(hopper, r0, rf, legLength):
     hopper.constructPyomoModel()

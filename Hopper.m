@@ -7,6 +7,7 @@ classdef Hopper < handle
                          'hind', struct('x', -0.5, 'z', -0.25))
     leg_length
     v
+    t_data     
     r_data     
     r_hip_data 
     p_data     
@@ -69,11 +70,12 @@ classdef Hopper < handle
       num_positions = obj.rbm_vis.getNumPositions();
     end
 
-    function loadResults(obj, data, dt)
+    function loadResults(obj, data)
+      obj.t_data          = sqrt(obj.leg_length/9.81)*data.t;
       obj.r_data          = obj.leg_length*data.r;
       obj.r_hip_data      = obj.leg_length*data.r_hip;
       obj.p_data          = obj.leg_length*data.p;
-      obj.f_data          = data.f*obj.rbm_vis.getMass()*9.81;
+      obj.f_data          = data.f;%*obj.rbm_vis.getMass()*9.81;
       obj.th_data         = data.th;
       obj.T_data          = data.T*obj.rbm_vis.getMass()*9.81*obj.leg_length;
       N = size(obj.r_data, 2);
@@ -92,7 +94,7 @@ classdef Hopper < handle
       end
       obj.q_data = q_data;
 
-      t = sqrt(obj.leg_length/9.81)*(0:dt:(N-1)*dt);
+      t = obj.t_data;
 
       qtraj = PPTrajectory(foh(t, q_data));
       obj.qtraj = qtraj.setOutputFrame(obj.rbm_vis.getPositionFrame());
