@@ -2,6 +2,7 @@ classdef Hopper < handle
   properties
     rbm
     rbm_vis
+    littleDog
     platforms = struct('start', {},  'end', {}, 'height', {}, 'geom', {}) 
     hip_in_body = struct('front', struct('x', 0.5, 'z', -0.25), ...
                          'hind', struct('x', -0.5, 'z', -0.25))
@@ -27,10 +28,12 @@ classdef Hopper < handle
       options = struct();
       options.floating = true;
       options.use_new_kinsol = true;
+      obj.littleDog = LittleDog();
       obj.rbm = RigidBodyManipulator(urdf, options);
+      obj.rbm = obj.rbm.setBody(2, obj.littleDog.getBody(2));
       obj.rbm_vis = obj.rbm;
-      obj.hip_in_body = hip_in_body;
       obj.leg_length = leg_length;
+      obj.hip_in_body = obj.constructHipInBody();
 
       colormap('lines')
       colors = colormap';
@@ -75,7 +78,7 @@ classdef Hopper < handle
       obj.r_data          = obj.leg_length*data.r;
       obj.r_hip_data      = obj.leg_length*data.r_hip;
       obj.p_data          = obj.leg_length*data.p;
-      obj.f_data          = data.f;%*obj.rbm_vis.getMass()*9.81;
+      obj.f_data          = data.f*2*obj.leg_length;%*obj.rbm_vis.getMass()*9.81;
       obj.th_data         = data.th;
       obj.T_data          = data.T*obj.rbm_vis.getMass()*9.81*obj.leg_length;
       N = size(obj.r_data, 2);
@@ -98,7 +101,7 @@ classdef Hopper < handle
 
       qtraj = PPTrajectory(foh(t, q_data));
       obj.qtraj = qtraj.setOutputFrame(obj.rbm_vis.getPositionFrame());
-      obj.Ftraj = PPTrajectory(foh(t, reshape(permute(obj.f_data, [1, 3, 2]),[],N)));
+      obj.Ftraj = PPTrajectory(zoh(t, reshape(permute(obj.f_data, [1, 3, 2]),[],N)));
 
       obj.T_actual = sum((obj.p_data(1,:,:)+obj.r_hip_data(1,:,:)).*obj.f_data(2,:,:) - (obj.p_data(2,:,:)+obj.r_hip_data(2,:,:)).*obj.f_data(1,:,:),3);
     end
@@ -109,8 +112,9 @@ classdef Hopper < handle
     end
 
     function Istar = getDimensionlessMomentOfInertia(obj)
-      m = obj.rbm.getMass();
-      I = obj.rbm.body(2).inertia(2,2);
+      A = obj.littleDog.centroidalMomentumMatrix(obj.littleDog.home());
+      I = A(2,5);
+      m = obj.littleDog.getMass();
       Istar = I/(m*obj.leg_length^2);
     end
 
@@ -126,6 +130,16 @@ classdef Hopper < handle
       obj.platforms(end + 1) = platform;
       obj.rbm_vis = obj.rbm_vis.addVisualGeometryToBody(1, platform.geom);
       obj.rbm_vis = obj.rbm_vis.compile();
+    end
+
+    function hip_in_body = constructHipInBody(obj)
+      for name = {'front', 'back'}
+        str = name{1};
+        body = obj.littleDog.parseBodyOrFrameID(sprintf('%s_left_hip', str));
+        Ttree = obj.littleDog.getBody(body).Ttree;
+        hip_in_body.(str).x = Ttree(1,4)/obj.leg_length;
+        hip_in_body.(str).z = Ttree(3,4)/obj.leg_length;
+      end
     end
   end
 end

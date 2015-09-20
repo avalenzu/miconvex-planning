@@ -134,7 +134,7 @@ class Hopper:
         #model.beta = Var(model.feet, model.BV_INDEX, model.t, within=NonNegativeReals, bounds=(0, self.forceMax))
         model.T = Var(model.t, bounds=(-self.forceMax, self.forceMax))
         lb = {'x': -1, 'z': -1}
-        ub = {'x':  1, 'z': -0.5}
+        ub = {'x':  1, 'z': -0.75}
         def _pBounds(m, foot, i, t):
             return (math.sqrt(2)/2*lb[i], math.sqrt(2)/2*ub[i])
         model.p = Var(model.feet, model.R2_INDEX, model.t, bounds=_pBounds)
@@ -276,6 +276,14 @@ class Hopper:
                 m = disjunctData.model()
                 return A[i,0]*m.foot[foot, 'x', t] + A[i,1]*m.foot[foot, 'z', t] <= float(b[i])
             disjunct.contactPositionConstraint = Constraint(range(A.shape[0]), rule=_contactPositionConstraint)
+
+            def _footCollisionAvoidanceConstraint(disjunctData, i, pm1):
+                m = disjunctData.model()
+                if self.regions[region]['mu'] == 0. and t != m.t[-1] and t != m.t[1]:
+                    return A[i,0]*m.foot[foot, 'x', t+pm1] + A[i,1]*m.foot[foot, 'z', t+pm1] <= float(b[i])
+                else:
+                    return Constraint.Skip
+            disjunct.footCollisionAvoidanceConstraint = Constraint(range(A.shape[0]), [-1, 1], rule=_footCollisionAvoidanceConstraint)
 
             def _hipPositionConstraint(disjunctData, i):
                 if self.regions[region]['mu'] == 0.:

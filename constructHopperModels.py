@@ -9,34 +9,34 @@ from hopperUtil import *
 
 desiredPrecision = 8
 N = 20
-tf = 1*1.6
-legLength = 0.3
+tf = 2*1.6
+legLength = 0.174
 r0 = [0, legLength/2]
-rf = [2, legLength]
+rf = [6*legLength, legLength]
 v0 = [0, 0]
 w0 = 0
 hipOffset = {'front': {'x': 0.5, 'z': -0.25}, 'hind': {'x': -0.5, 'z': -0.25}}
-step_height = 0.1
-platform1_start = -0.5
-platform1_end = 0.3
+step_height = legLength/2
+platform1_start = -1*legLength
+platform1_end = 1*legLength
 platform1_height = 0*step_height
-platform2_start = 0.7
-platform2_end = 1.3
+platform2_start = 2*legLength
+platform2_end = 4*legLength
 platform2_height = step_height
-platform3_start = 1.7
-platform3_end = 9.5
+platform3_start = 5*legLength
+platform3_end = 7*legLength
 platform3_height = 2*step_height
 
 matlab_hopper = eng.Hopper(legLength, hipOffset)
 hop = Hopper(N, eng, matlab_hopper)
 # hop.mdt_precision = int(ceil(-np.log2(desiredPrecision)))
-hop.dtBounds = tuple(tf/N/sqrt(legLength/9.81)*np.array([0.1, 1.9]))
+hop.dtBounds = tuple(tf/N/sqrt(legLength/9.81)*np.array([0.1, 1.5]))
 hop.rotationMax = np.pi/8
 hop.nOrientationSectors = 1 #int(floor(np.pi/8/desiredPrecision))
 print 'hop.nOrientationSectors = %d' % hop.nOrientationSectors
-hop.velocityMax = 3
-hop.positionMax = 7
-hop.forceMax = 2
+hop.velocityMax = 3.
+hop.positionMax = 1.5*rf[0]/legLength
+hop.forceMax = 2.
 hop.addPlatform(platform1_start/legLength, platform1_end/legLength, platform1_height/legLength, 1)
 hop.addPlatform(platform2_start/legLength, platform2_end/legLength, platform2_height/legLength, 1)
 hop.addPlatform(platform3_start/legLength, platform3_end/legLength, platform3_height/legLength, 1)
@@ -99,10 +99,10 @@ for z_data in m.z.values():
 #m = m_nlp.clone()
 #m.dt.fix()
 
-def _momentRule(m, t):
-    return m.T[t] == sum(m.footRelativeToCOM[foot,'x',t]*m.f[foot,'z',t] - m.footRelativeToCOM[foot,'z',t]*m.f[foot, 'x',t] for foot in m.feet)
+#def _momentRule(m, t):
+    #return m.T[t] == sum(m.footRelativeToCOM[foot,'x',t]*m.f[foot,'z',t] - m.footRelativeToCOM[foot,'z',t]*m.f[foot, 'x',t] for foot in m.feet)
 
-m_nlp.momentAbountCOM = Constraint(m_nlp.t, rule=_momentRule)
+#m_nlp.momentAbountCOM = Constraint(m_nlp.t, rule=_momentRule)
 
 def _hipTorqueRule(m, foot, t):
     return m.hipTorque[foot, t] == m.p[foot,'x',t]*m.f[foot,'z',t] - m.p[foot,'z',t]*m.f[foot, 'x',t]
@@ -123,19 +123,6 @@ m_nlp.Sin = Constraint(m_nlp.t, rule=_sin)
 opt_nlp = SolverFactory('ipopt')
 
 #opt = constructGurobiSolver(mipgap=0.8, MIPFocus=1, TimeLimit=90., Threads=11)
-opt = constructGurobiSolver(mipgap=0.5, TimeLimit=40., Threads=11)
+opt = constructGurobiSolver(TimeLimit=120., Threads=11)
 
 hop.constructVisualizer()
-
-#results = opt_nlp.solve(m_nlp, tee=True)
-#m_nlp.solutions.load_from(results)
-#hop.loadResults(m_nlp)
-
-results = opt.solve(m, tee=True)
-m.solutions.store_to(results)
-m_nlp.solutions.load_from(results, ignore_invalid_labels=True)
-fixIntegerVariables(m_nlp)
-
-results_nlp = opt_nlp.solve(m_nlp, tee=True)
-
-hop.loadResults(m_nlp)
