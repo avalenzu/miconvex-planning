@@ -30,7 +30,8 @@ platform3_height = 2*step_height
 matlab_hopper = eng.Hopper(legLength, hipOffset)
 hop = Hopper(N, eng, matlab_hopper)
 # hop.mdt_precision = int(ceil(-np.log2(desiredPrecision)))
-hop.dtBounds = tuple(tf/N/sqrt(legLength/9.81)*np.array([0.1, 1.9]))
+hop.dtBounds = tuple((1/sqrt(legLength/9.81))*np.array([0.01, 0.2]))
+hop.dtNom = 0.1*(1/sqrt(legLength/9.81))
 hop.rotationMax = np.pi/8
 hop.nOrientationSectors = 1 #int(floor(np.pi/8/desiredPrecision))
 print 'hop.nOrientationSectors = %d' % hop.nOrientationSectors
@@ -41,8 +42,8 @@ hop.addPlatform(platform1_start/legLength, platform1_end/legLength, platform1_he
 hop.addPlatform(platform2_start/legLength, platform2_end/legLength, platform2_height/legLength, 1)
 hop.addPlatform(platform3_start/legLength, platform3_end/legLength, platform3_height/legLength, 1)
 hop.addFreeBlock(bottom=platform1_height/legLength, right=platform2_start/legLength)
-hop.addFreeBlock(bottom=platform2_height/legLength, right=platform3_start/legLength)
-hop.addFreeBlock(bottom=platform3_height/legLength)
+hop.addFreeBlock(bottom=platform2_height/legLength, left=platform1_end/legLength, right=platform3_start/legLength)
+hop.addFreeBlock(bottom=platform3_height/legLength, left=platform2_end/legLength)
 hop.constructVisualizer()
 m_nlp = hop.constructPyomoModel()
 
@@ -93,9 +94,10 @@ def _periodicFootPosition(m, foot, xz):
 
 #m_nlp.periodicFootPosition = Constraint(m_nlp.feet, m_nlp.R2_INDEX, rule=_periodicFootPosition)
 
-m = constructMDTModel(m_nlp, desiredPrecision)
-for z_data in m.z.values():
-    z_data._component().branchPriority = 1
+#m = constructMDTModel(m_nlp, desiredPrecision)
+m = constructRelaxedModel(m_nlp)
+#for z_data in m.z.values():
+    #z_data._component().branchPriority = 1
 #m = m_nlp.clone()
 #m.dt.fix()
 
@@ -124,6 +126,6 @@ opt_nlp = SolverFactory('ipopt')
 opt_minlp = constructCouenneSolver()
 
 #opt = constructGurobiSolver(mipgap=0.8, MIPFocus=1, TimeLimit=90., Threads=11)
-opt = constructGurobiSolver(mipgap=0.5, TimeLimit=120., Threads=11)
+opt = constructGurobiSolver(mipgap=0.8, TimeLimit=120., Threads=11)
 
 hop.constructVisualizer()

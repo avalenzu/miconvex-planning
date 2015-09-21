@@ -2,7 +2,19 @@ from __future__ import division
 import numpy as np
 from pyomo.opt import SolverFactory
 from pyomo.core.plugins.transform.radix_linearization import *
+from mccormick_envelope import *
 from pyomo.core.base.component import register_component, Component, ComponentUID
+
+
+def constructRelaxedModel(m_nlp, dt=None):
+    m = m_nlp.clone()
+    if dt is not None:
+        m.dt.fix(dt)
+    else:
+        m.dt.fix()
+    mccormick = McCormickEnvelope()
+    m = mccormick.create_using(m, verbose=True)
+    return m
 
 def constructMDTModel(m_nlp, desiredPrecision, dt=None):
     m = m_nlp.clone()
@@ -32,7 +44,7 @@ def constructCouenneSolver(**kwargs):
     return opt
 
 def constructMinotaurSolver():
-    opt = SolverFactory('qg')
+    opt = SolverFactory('qpd')
     opt.set_options('--ampl=1')
     opt.set_options('--nlp_engine=IPOPT')
     opt.set_options('--bnb_time_limit=3600.')

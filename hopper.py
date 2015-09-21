@@ -29,6 +29,7 @@ class Hopper:
         self.pd = []
         self.R = []
         self.dtBounds = (0.05, 0.2)
+        self.dtNom = 0.1
         self.c = []
         self.p_MDT = -2
         self.P_MDT = -1
@@ -123,7 +124,7 @@ class Hopper:
             return self.hipOffset[foot][xz]
         model.hipOffset = Param(model.feet, model.R2_INDEX, initialize=_hipOffsetRule)
 
-        model.dt = Var(model.t, bounds=self.dtBounds, initialize=float(np.mean(self.dtBounds)))
+        model.dt = Var(model.t, bounds=self.dtBounds, initialize=self.dtNom)
         model.r = Var(model.R2_INDEX, model.t, bounds=(-self.positionMax, self.positionMax))
         model.v = Var(model.R2_INDEX, model.t, bounds=(-self.velocityMax, self.velocityMax))
         model.th = Var(model.t, bounds=(-self.rotationMax, self.rotationMax))
