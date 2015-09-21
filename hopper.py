@@ -46,7 +46,7 @@ class Hopper:
 
     def addPlatform(self, platform_start, platform_end, platform_height, mu):
         self.addRegion(A=np.matrix('-1., 0.,; 1., 0.'),
-                       b=np.matrix('%f; %f' % (-platform_start, platform_end)),
+                       b=np.matrix('%f; %f' % (-(platform_start+0.1), platform_end-0.1)),
                        Aeq=np.array([0., 1.]), beq=platform_height, normal=np.matrix('0.; 1.'),
                        mu=mu)
         self.eng.addPlatform(self.matlabHopper, platform_start, platform_end, platform_height, nargout=0)

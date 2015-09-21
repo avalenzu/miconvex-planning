@@ -7,7 +7,7 @@ from math import sqrt
 from hopper import Hopper
 from hopperUtil import *
 
-desiredPrecision = 8
+desiredPrecision = 4
 N = 20
 tf = 2*1.6
 legLength = 0.174
@@ -30,7 +30,7 @@ platform3_height = 2*step_height
 matlab_hopper = eng.Hopper(legLength, hipOffset)
 hop = Hopper(N, eng, matlab_hopper)
 # hop.mdt_precision = int(ceil(-np.log2(desiredPrecision)))
-hop.dtBounds = tuple(tf/N/sqrt(legLength/9.81)*np.array([0.1, 1.5]))
+hop.dtBounds = tuple(tf/N/sqrt(legLength/9.81)*np.array([0.1, 1.9]))
 hop.rotationMax = np.pi/8
 hop.nOrientationSectors = 1 #int(floor(np.pi/8/desiredPrecision))
 print 'hop.nOrientationSectors = %d' % hop.nOrientationSectors
@@ -121,8 +121,9 @@ def _sin(m, t):
 m_nlp.Sin = Constraint(m_nlp.t, rule=_sin)
 
 opt_nlp = SolverFactory('ipopt')
+opt_minlp = constructCouenneSolver()
 
 #opt = constructGurobiSolver(mipgap=0.8, MIPFocus=1, TimeLimit=90., Threads=11)
-opt = constructGurobiSolver(TimeLimit=120., Threads=11)
+opt = constructGurobiSolver(mipgap=0.5, TimeLimit=120., Threads=11)
 
 hop.constructVisualizer()
