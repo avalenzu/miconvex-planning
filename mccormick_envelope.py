@@ -71,6 +71,8 @@ class McCormickEnvelope(Transformation):
         # use...
         for _expr, _x1, _x2 in bilinear_terms:
             self._relax_term(_expr, _x1, _x2, _block, _known_bilinear)
+        for _expr, _x1 in quadratic_terms:
+            self._relax_term(_expr, _x1, _x1, _block, _known_bilinear)
 
         # Return the relaxed instance!
         return M
