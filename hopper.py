@@ -134,8 +134,8 @@ class Hopper:
         model.hipTorque = Var(model.feet, model.t, bounds=(-self.forceMax, self.forceMax))
         #model.beta = Var(model.feet, model.BV_INDEX, model.t, within=NonNegativeReals, bounds=(0, self.forceMax))
         model.T = Var(model.t, bounds=(-self.forceMax, self.forceMax))
-        lb = {'x': -1, 'z': -1}
-        ub = {'x':  1, 'z': -0.75}
+        lb = {'x': -0.5, 'z': -1}
+        ub = {'x':  0.5, 'z': -0.75}
         def _pBounds(m, foot, i, t):
             return (math.sqrt(2)/2*lb[i], math.sqrt(2)/2*ub[i])
         model.p = Var(model.feet, model.R2_INDEX, model.t, bounds=_pBounds)

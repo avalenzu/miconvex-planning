@@ -4,7 +4,7 @@ classdef HopperVisualizer < Visualizer
     Ftraj
     lcmgl
     %r_foot_inds = [7:9]';
-    r_foot_inds = [7:9; 19:21]';
+    r_foot_inds = [7:9; 1*12+(7:9); 2*12+(7:9); 3*12+(7:9)]';
   end
   methods
     function obj = HopperVisualizer(v)

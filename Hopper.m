@@ -33,7 +33,11 @@ classdef Hopper < handle
       obj.rbm = obj.rbm.setBody(2, obj.littleDog.getBody(2));
       obj.rbm_vis = obj.rbm;
       obj.leg_length = leg_length;
-      obj.hip_in_body = obj.constructHipInBody();
+      if nargin < 2
+        obj.hip_in_body = obj.constructHipInBody();
+      else
+        obj.hip_in_body = hip_in_body;
+      end
 
       colormap('lines')
       colors = colormap';
@@ -41,7 +45,7 @@ classdef Hopper < handle
       options.collision = false;
       leg = RigidBodyCapsule(0.01, leg_length, [0; 0; leg_length/2], [0; 0; 0]);
 
-      for j = 1:2
+      for j = 1:numel(fieldnames(obj.hip_in_body))
         % Add feet
         obj.rbm_vis = obj.rbm_vis.addRobotFromURDF(particle_urdf, [], [], options);
         body = obj.rbm_vis.body(end);
@@ -100,6 +104,8 @@ classdef Hopper < handle
       t = obj.t_data;
 
       qtraj = PPTrajectory(foh(t, q_data));
+      size(q_data)
+      obj.rbm_vis.getNumPositions()
       obj.qtraj = qtraj.setOutputFrame(obj.rbm_vis.getPositionFrame());
       obj.Ftraj = PPTrajectory(zoh(t, reshape(permute(obj.f_data, [1, 3, 2]),[],N)));
 
