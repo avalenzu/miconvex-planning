@@ -3,7 +3,9 @@ classdef Hopper < handle
     rbm
     rbm_vis
     littleDog
+    hopper
     platforms = struct('start', {},  'end', {}, 'height', {}, 'geom', {}) 
+    regions
     hip_in_body = struct('front', struct('x', 0.5, 'z', -0.25), ...
                          'hind', struct('x', -0.5, 'z', -0.25))
     leg_length
@@ -13,10 +15,13 @@ classdef Hopper < handle
     r_hip_data 
     p_data     
     f_data     
+    f_data_vis
     th_data    
     T_data     
     q_data
     T_actual
+    region_indicators
+    body_region_indicators
     qtraj
     Ftraj
   end
@@ -58,6 +63,8 @@ classdef Hopper < handle
         obj.rbm_vis = obj.rbm_vis.setBody(obj.rbm_vis.getNumBodies(), body);
       end
       obj.rbm_vis = obj.rbm_vis.compile();
+      obj.littleDog = obj.littleDog.removeCollisionGroupsExcept('body');
+      obj.littleDog = obj.littleDog.compile();
     end
 
     function q_data = getQData(obj)
@@ -78,9 +85,12 @@ classdef Hopper < handle
       obj.r_data          = obj.leg_length*data.r;
       obj.r_hip_data      = obj.leg_length*data.r_hip;
       obj.p_data          = obj.leg_length*data.p;
-      obj.f_data          = data.f*2*obj.leg_length;%*obj.rbm_vis.getMass()*9.81;
+      obj.f_data          = data.f;%*obj.rbm_vis.getMass()*9.81;
+      obj.f_data_vis      = data.f*2*obj.leg_length;%*obj.rbm_vis.getMass()*9.81;
       obj.th_data         = data.th;
       obj.T_data          = data.T*obj.rbm_vis.getMass()*9.81*obj.leg_length;
+      obj.region_indicators = round(data.region_indicators);
+      obj.body_region_indicators = round(data.body_region_indicators);
       N = size(obj.r_data, 2);
       n_feet = size(obj.p_data, 3);
       leg_pitch_data  = zeros(1, N, double(n_feet));
@@ -101,7 +111,7 @@ classdef Hopper < handle
 
       qtraj = PPTrajectory(foh(t, q_data));
       obj.qtraj = qtraj.setOutputFrame(obj.rbm_vis.getPositionFrame());
-      obj.Ftraj = PPTrajectory(zoh(t, reshape(permute(obj.f_data, [1, 3, 2]),[],N)));
+      obj.Ftraj = PPTrajectory(zoh(t, reshape(permute(obj.f_data_vis, [1, 3, 2]),[],N)));
 
       obj.T_actual = sum((obj.p_data(1,:,:)+obj.r_hip_data(1,:,:)).*obj.f_data(2,:,:) - (obj.p_data(2,:,:)+obj.r_hip_data(2,:,:)).*obj.f_data(1,:,:),3);
     end
@@ -122,6 +132,14 @@ classdef Hopper < handle
       hip_in_body = obj.hip_in_body;
     end
 
+    function addRegion(obj, region)
+      if isempty(obj.regions)
+        obj.regions = region;
+      else
+        obj.regions(end+1) = region;
+      end
+    end
+
     function addPlatform(obj, platform_start, platform_end, platform_height)
       platform.start = platform_start*obj.leg_length;
       platform.end = platform_end*obj.leg_length;
@@ -130,6 +148,8 @@ classdef Hopper < handle
       obj.platforms(end + 1) = platform;
       obj.rbm_vis = obj.rbm_vis.addVisualGeometryToBody(1, platform.geom);
       obj.rbm_vis = obj.rbm_vis.compile();
+      obj.littleDog = obj.littleDog.addGeometryToBody(1, platform.geom);
+      obj.littleDog = obj.littleDog.compile();
     end
 
     function hip_in_body = constructHipInBody(obj)
@@ -140,6 +160,325 @@ classdef Hopper < handle
         hip_in_body.(str).x = Ttree(1,4)/obj.leg_length;
         hip_in_body.(str).z = Ttree(3,4)/obj.leg_length;
       end
+    end
+
+    function [sol, prog] = solveCDFKP(obj, options)
+      if nargin < 2 || isempty(options), options = struct(); end
+      options = obj.parseOptionsStruct(options); 
+      assert(~isempty(obj.r_data), 'You must load data first!');
+      robot = obj.littleDog;
+      nq = robot.getNumPositions();
+      foot = struct('id',[],'in_stance',[]);
+      foot(1,1).id = robot.findFrameId('front_left_foot_center');
+      foot(1,2).id = robot.findFrameId('front_right_foot_center'); 
+      foot(2,1).id = robot.findFrameId('back_left_foot_center');
+      foot(2,2).id = robot.findFrameId('back_right_foot_center');
+      N = size(obj.r_data, 2);
+
+      % Load nominal data
+      xstar = home(robot);
+      qstar = xstar(1:nq);
+      q0 = qstar;
+      qf = qstar;
+
+      % Set up time parameters
+      dt = diff(obj.t_data);
+      dt_range = [min(dt), max(dt)];
+      tf_range = [N*dt_range(1), N*dt_range(2)];
+
+      % Set up cost variables
+      q_nom = bsxfun(@times,qstar,ones(1,N));
+      q_nom(5,:) = obj.th_data;
+      q_nom([1,3],:) = obj.r_data;
+      state_cost = Point(getStateFrame(robot),ones(getNumStates(robot),1));
+      state_cost.base_x = 0;
+      state_cost.base_y = 0;
+      state_cost.base_roll = 10;
+      state_cost.base_yaw = 10;
+      state_cost.front_left_hip_roll = 5;
+      state_cost.front_right_hip_roll = 5;
+      state_cost.back_left_hip_roll = 5;
+      state_cost.back_right_hip_roll = 5;
+      state_cost = double(state_cost);
+      Q = diag(state_cost(1:nq)); 
+      Qv = diag(state_cost(nq+1:end));
+      Q_comddot = diag([1,1,1]);
+      Q_contact_force = 5*eye(3);
+
+      % Set up common friction-cone variables
+      num_edges = 3;
+      FC_angles = linspace(0,2*pi,num_edges+1);FC_angles(end) = [];
+
+      % Set up contact wrench structure
+      contact_wrench_struct = struct('active_knot', {}, 'cw', {});
+      for i = 1:2 % front-back
+        for j = 1:numel(obj.regions)
+          mu = double(obj.regions(j).mu);
+          if mu > 0
+            idx = find(obj.region_indicators(j, :, i));
+            if ~isempty(idx)
+              for k = 1:2 % left-right
+                FC_axis = zeros(3,1);
+                FC_axis([1,3]) = obj.regions(j).normal;
+                FC_perp1 = rotx(pi/2)*FC_axis;
+                FC_perp2 = cross(FC_axis, FC_perp1);
+                FC_edge = bsxfun(@plus, FC_axis, mu*(bsxfun(@times,cos(FC_angles),FC_perp1) + ...
+                  bsxfun(@times,sin(FC_angles),FC_perp2)));
+                contact_wrench_struct(end+1).active_knot = idx;
+                %contact_wrench_struct(end).cw = LinearFrictionConeWrench(robot,foot(i,k).id,zeros(3,1),FC_edge);
+                contact_wrench_struct(end).cw = FrictionConeWrench(robot,foot(i,k).id,zeros(3,1),mu,FC_axis);
+              end
+            end
+          end
+        end
+      end
+
+      options.time_option = 2;
+      prog = ComDynamicsFullKinematicsPlanner(robot,N,tf_range,Q_comddot,Qv,Q,q_nom,Q_contact_force,contact_wrench_struct,options);
+
+      % Add collision avoidance
+      min_distance = 0.03;
+      prog = prog.addRigidBodyConstraint(MinDistanceConstraint(robot, min_distance),1:N);
+
+      % Add Timestep bounds
+      %h_min = dt_range(1); h_max = dt_range(2);
+      %prog = prog.addBoundingBoxConstraint(BoundingBoxConstraint(h_min*ones(N-1,1),h_max*ones(N-1,1)),prog.h_inds(:));
+      prog = prog.addBoundingBoxConstraint(BoundingBoxConstraint(dt, dt),prog.h_inds(:));
+
+      % Add symmetry constraints
+      prog = prog.addConstraint(obj.symmetryConstraint(obj.littleDog, 1:N), prog.q_inds(:));
+
+      % Add initial conditions
+      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.H_inds(:,1));
+      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.Hdot_inds(:,1));
+      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comdot_inds(:,1));
+      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comddot_inds(:,1));
+      prog = prog.addConstraint(ConstantConstraint(zeros(nq,1)), prog.v_inds(:,1));
+
+      % Add final conditions
+      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.H_inds(:,N));
+      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.Hdot_inds(:,N));
+      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comdot_inds(:,N));
+      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comddot_inds(:,N));
+      prog = prog.addConstraint(ConstantConstraint(zeros(nq,1)), prog.v_inds(:,N));
+
+      % Add constraints on base
+      tol = 0.05;
+      prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(1,:)-tol, obj.r_data(1,:)+tol), prog.com_inds(1,:));
+      prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(2,:)-tol, obj.r_data(2,:)+tol), prog.com_inds(3,:));
+      %prog = prog.addConstraint(BoundingBoxConstraint(obj.th_data, obj.th_data), prog.q_inds(5,:));
+      prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(2,:));
+      prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(4,:));
+      prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(6,:));
+      prog = prog.addConstraint(BoundingBoxConstraint(-pi/8*ones(N,1), pi/8*ones(N,1)), prog.q_inds(5,:));
+
+      % Foot region constraints
+      foot_position_fcn = cell(2);
+      foot_positions = bsxfun(@plus, obj.r_data, obj.r_hip_data + obj.p_data);
+      for i = 1:2
+        for k = 1:2
+          foot_position_fcn{i, k} = drakeFunction.kinematic.WorldPosition(robot, foot(i,k).id);
+          for n = 1:N
+            lb = -Inf(3,1);
+            ub = Inf(3,1);
+            tol = 0.02;
+            lb([1,3]) = foot_positions(:, n, i) - tol;
+            ub([1,3]) = foot_positions(:, n, i) + tol;
+            constraint = DrakeFunctionConstraint(lb, ub, foot_position_fcn{i,k});
+            cnstr_inds = prog.q_inds(:,n);
+            prog = prog.addConstraint(constraint,cnstr_inds);
+          end
+        end
+      end
+      for j = 1:numel(obj.regions)
+        A = [obj.regions(j).A; obj.regions(j).Aeq; -obj.regions(j).Aeq]./obj.leg_length;
+        A = [A(:, 1), zeros(size(A,1), 1), A(:, 2)];
+        b = [obj.regions(j).b; obj.regions(j).beq; -obj.regions(j).beq];
+        region_fcn = drakeFunction.Affine(A, -b);
+        lb = -Inf(size(b));
+        ub = zeros(size(b));
+
+        % body region constraint
+        idx = find(obj.body_region_indicators(j, :));
+        constraint = DrakeFunctionConstraint(lb, ub-0.25, region_fcn);
+        for time_index = reshape(idx, 1, [])
+          cnstr_inds = prog.q_inds(1:3,time_index);
+          prog = prog.addConstraint(constraint,cnstr_inds);
+        end
+
+        % leg region constraints
+        for i = 1:2 % front-back
+          idx = find(obj.region_indicators(j, :, i));
+          if ~isempty(idx)
+            for k = 1:2 % left-right
+              constraint = DrakeFunctionConstraint(lb, ub, region_fcn(foot_position_fcn{i,k}));
+              for time_index = reshape(idx, 1, [])
+                cnstr_inds = prog.q_inds(:,time_index);
+                prog = prog.addConstraint(constraint,cnstr_inds);
+              end
+              if obj.regions(j).mu > 0
+                % stance feet stationary constraints
+                end_idx = find(diff(idx) ~= 1);
+                start_idx = end_idx + 1;
+                start_idx = [1, start_idx];
+                end_idx = [end_idx,numel(idx)];
+                time_index = cell(numel(start_idx),1);
+                for l = 1:numel(start_idx)
+                  time_index{l} = idx(start_idx(l):end_idx(l));
+                end
+                time_index
+                prog = prog.addRigidBodyConstraint(WorldFixedPositionConstraint(robot,foot(i,k).id, zeros(3,1)),time_index);
+              end
+            end
+          end
+        end
+      end
+
+      % Set up seed
+      x_seed = zeros(prog.num_vars,1);
+      q_seed = linspacevec(q0,qf,N);
+      %q_seed([1, 3], :) = obj.r_data;
+      q_seed(5, :) = obj.th_data;
+      v_seed = gradient(q_seed);
+      com_seed = zeros(3, N);
+      com_seed([1, 3], :) = obj.r_data;
+      comdot_seed = gradient(com_seed);
+      comddot_seed = gradient(comdot_seed);
+      x_seed(prog.h_inds) = dt;
+      x_seed(prog.q_inds(:)) = reshape(q_seed,[],1);
+      x_seed(prog.v_inds(:)) = reshape(v_seed,[],1);
+      x_seed(prog.com_inds(:)) = reshape(com_seed,[],1);
+      x_seed(prog.comdot_inds(:)) = reshape(comdot_seed,[],1);
+      x_seed(prog.comddot_inds(:)) = reshape(comddot_seed,[],1);
+      for i = 1:2
+        for j = 1:2
+          f_seed = zeros(3, N);
+          f_seed([1, 3], :) = obj.f_data(:, :, i);
+          x_seed(prog.lambda_inds{2*(i-1) + j}(:)) = 0.5*f_seed;
+        end
+      end
+
+      % Set up solver options
+      prog = prog.setSolverOptions('snopt','iterationslimit',1e6);
+      prog = prog.setSolverOptions('snopt','majoriterationslimit', options.major_iteration_limit);
+      prog = prog.setSolverOptions('snopt','majorfeasibilitytolerance',5e-6);
+      prog = prog.setSolverOptions('snopt','majoroptimalitytolerance',6e-4);
+      prog = prog.setSolverOptions('snopt','superbasicslimit',2000);
+      prog = prog.setSolverOptions('snopt','linesearchtolerance',0.9);
+      prog = prog.setSolverOptions('snopt','print','snopt.out');
+      prog = prog.setSolverOptions('snopt','sense','Feasible point');
+
+      % Solve trajectory optimization
+      tic
+      %profile on;
+      [x_sol,~,~] = prog.solve(x_seed);
+      %profile off;
+      toc
+
+      % Parse trajectory optimization output
+      sol.x_sol = x_sol;
+      sol.q = reshape(x_sol(prog.q_inds(:)),nq,N);
+      sol.v = reshape(x_sol(prog.v_inds(:)),nq,N);
+      sol.h = reshape(x_sol(prog.h_inds),1,[]);
+      sol.t = cumsum([0 sol.h]);
+      sol.com = reshape(x_sol(prog.com_inds),3,[]);
+      sol.comdot = reshape(x_sol(prog.comdot_inds),3,[]);
+      sol.comddot = reshape(x_sol(prog.comddot_inds),3,[]);
+      sol.H = reshape(x_sol(prog.H_inds),3,[]);
+      sol.Hdot = reshape(x_sol(prog.Hdot_inds),3,[])*prog.torque_multiplier;
+      sol.lambda = cell(2,1);
+      for i = 1:numel(prog.lambda_inds)
+        sol.lambda{i} = reshape(x_sol(prog.lambda_inds{i}),size(prog.lambda_inds{i},1),[],N);
+      end
+      sol.xtraj= PPTrajectory(foh(sol.t,[sol.q;sol.v]));
+      sol.xtraj= sol.xtraj.setOutputFrame(robot.getStateFrame);
+    end
+
+    function delete(obj)
+      obj.rbm = [];
+      obj.rbm_vis = [];
+      obj.littleDog = [];
+      obj.hopper = [];
+      obj.platforms = [];
+      obj.hip_in_body = [];
+      obj.leg_length = [];
+      obj.v = [];
+      obj.t_data = [];
+      obj.r_data = [];
+      obj.r_hip_data = [];
+      obj.p_data = [];
+      obj.f_data = [];
+      obj.th_data = [];
+      obj.T_data = [];
+      obj.q_data = [];
+      obj.T_actual = [];
+      obj.region_indicators = [];
+      obj.regions = [];
+      obj.qtraj = [];
+      obj.Ftraj = [];
+    end
+  end
+
+  methods (Static)
+    function options = parseOptionsStruct(options_in)
+      options = Hopper.defaultOptionsStruct();
+      for fieldname_cell = fields(options_in)'
+        fieldname = fieldname_cell{1};
+        if isfield(options,fieldname)
+          options.(fieldname) = options_in.(fieldname);
+        end
+      end
+    end
+
+    function options = defaultOptionsStruct()
+      options.visualize = true;
+      options.major_iteration_limit = 200;
+      options.suffix = '';
+    end
+
+    function symmetry_cnstr = symmetryConstraint(robot,t_idx)
+      N = numel(t_idx);
+      num_symmetry = 6;
+      symmetry_matrix = zeros(num_symmetry,robot.getNumPositions);
+      function mat = addSymmetricPair(mat, rows, joint1_name, joint2_name)
+        joint1_idx = robot.getBody(robot.findJointId(joint1_name)).position_num;
+        joint2_idx = robot.getBody(robot.findJointId(joint2_name)).position_num;
+        mat(rows, [joint1_idx, joint2_idx]) = [-1, 1];
+      end
+      function mat = addAntiSymmetricPair(mat, rows, joint1_name, joint2_name)
+        joint1_idx = robot.getBody(robot.findJointId(joint1_name)).position_num;
+        joint2_idx = robot.getBody(robot.findJointId(joint2_name)).position_num;
+        mat(rows, [joint1_idx, joint2_idx]) = [1, 1];
+      end
+      symmetry_matrix = addAntiSymmetricPair(symmetry_matrix, 1, ...
+                                              'front_left_hip_roll', ...
+                                              'front_right_hip_roll');
+      symmetry_matrix = addSymmetricPair(symmetry_matrix, 2, ...
+                                              'front_left_hip_pitch', ...
+                                              'front_right_hip_pitch');
+      symmetry_matrix = addSymmetricPair(symmetry_matrix, 3, ...
+                                              'front_left_knee', ...
+                                              'front_right_knee');
+      symmetry_matrix = addAntiSymmetricPair(symmetry_matrix, 4, ...
+                                              'back_left_hip_roll', ...
+                                              'back_right_hip_roll');
+      symmetry_matrix = addSymmetricPair(symmetry_matrix, 5, ...
+                                              'back_left_hip_pitch', ...
+                                              'back_right_hip_pitch');
+      symmetry_matrix = addSymmetricPair(symmetry_matrix, 6, ...
+                                              'back_left_knee', ...
+                                              'back_right_knee');
+      symmetry_cnstr = LinearConstraint(zeros(num_symmetry*N,1),zeros(num_symmetry*N,1),kron(speye(N),symmetry_matrix));
+      cnstr_name = cell(num_symmetry*N,1);
+      for i = 1:N
+        cnstr_name{(i-1)*num_symmetry+1} = sprintf('front_hip_roll_symmetry[%d]',t_idx(i));
+        cnstr_name{(i-1)*num_symmetry+2} = sprintf('front_hip_pitch_symmetry[%d]',t_idx(i));
+        cnstr_name{(i-1)*num_symmetry+3} = sprintf('front_knee_symmetry[%d]',t_idx(i));
+        cnstr_name{(i-1)*num_symmetry+4} = sprintf('back_hip_roll_symmetry[%d]',t_idx(i));
+        cnstr_name{(i-1)*num_symmetry+5} = sprintf('back_hip_pitch_symmetry[%d]',t_idx(i));
+        cnstr_name{(i-1)*num_symmetry+6} = sprintf('back_knee_symmetry[%d]',t_idx(i));
+      end
+      symmetry_cnstr = symmetry_cnstr.setName(cnstr_name);
     end
   end
 end

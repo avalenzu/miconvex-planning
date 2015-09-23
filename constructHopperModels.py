@@ -10,7 +10,7 @@ from hopperUtil import *
 desiredPrecision = 4
 N = 20
 tf = 2*1.6
-legLength = 0.174
+legLength = 0.16
 r0 = [0, legLength/2]
 rf = [6*legLength, legLength]
 v0 = [0, 0]
@@ -126,6 +126,6 @@ opt_nlp = SolverFactory('ipopt')
 opt_minlp = constructCouenneSolver()
 
 #opt = constructGurobiSolver(mipgap=0.8, MIPFocus=1, TimeLimit=90., Threads=11)
-opt = constructGurobiSolver(mipgap=0.8, TimeLimit=120., Threads=11)
+opt = constructGurobiSolver(mipgap=0.5, TimeLimit=120., Threads=11)
 
 hop.constructVisualizer()

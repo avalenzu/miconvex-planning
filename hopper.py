@@ -37,7 +37,7 @@ class Hopper:
         self.base = 10
         self.tf = 1
         self.nOrientationSectors = 1
-        self.bodyRadius = 0.5
+        self.bodyRadius = 0.25
         self.mdt_precision = 1
         self.eng = eng
         self.matlabHopper = matlabHopper
@@ -78,6 +78,13 @@ class Hopper:
             for key2 in self.regions[-1].keys():
                 if key == key2:
                     self.regions[-1][key] = value
+        forMatlab = dict(self.regions[-1])
+        for key, value in forMatlab.iteritems():
+            if isinstance(value, type(np.array(0))):
+                forMatlab[key] = matlab.double(value.tolist())
+            if value is None:
+                forMatlab[key] = matlab.double([])
+        self.eng.addRegion(self.matlabHopper, forMatlab, nargout=0)
 
     def constructVisualizer(self):
         self.eng.constructVisualizer(self.matlabHopper, nargout=0)
@@ -87,13 +94,15 @@ class Hopper:
 
     def loadResults(self, m):
         data = dict()
-        data['t'] =     matlab.double(hopperUtil.extractTime(m).tolist())
-        data['r'] =     matlab.double(hopperUtil.extractPostition(m).tolist())
-        data['th'] =    matlab.double(hopperUtil.extractOrientation(m).tolist())
-        data['r_hip'] = matlab.double(hopperUtil.extractHipPosition(m).tolist())
-        data['p'] =     matlab.double(hopperUtil.extractRelativeFootPosition(m).tolist())
-        data['f'] =     matlab.double(hopperUtil.extractFootForce(m).tolist())
-        data['T'] =     matlab.double(hopperUtil.extractTotalTorque(m).tolist())
+        data['t'] =                 matlab.double(hopperUtil.extractTime(m).tolist())
+        data['r'] =                 matlab.double(hopperUtil.extractPostition(m).tolist())
+        data['th'] =                matlab.double(hopperUtil.extractOrientation(m).tolist())
+        data['r_hip'] =             matlab.double(hopperUtil.extractHipPosition(m).tolist())
+        data['p'] =                 matlab.double(hopperUtil.extractRelativeFootPosition(m).tolist())
+        data['f'] =                 matlab.double(hopperUtil.extractFootForce(m).tolist())
+        data['T'] =                 matlab.double(hopperUtil.extractTotalTorque(m).tolist())
+        data['region_indicators'] = matlab.double(hopperUtil.extractRegionIndicators(m).tolist())
+        data['body_region_indicators'] = matlab.double(hopperUtil.extractBodyRegionIndicators(m, self).tolist())
         self.eng.loadResults(self.matlabHopper, data, nargout=0)
 
     def constructPyomoModel(self):
@@ -358,7 +367,7 @@ class Hopper:
                 if self.regions[region]['mu'] == 0.:
                     disjunctList.append(m.bodyRegionConstraints[region, t])
             return disjunctList
-        #model.bodyRegionDisjunction = Disjunction(model.t, rule=_bodyRegionDisjunction)
+        model.bodyRegionDisjunction = Disjunction(model.t, rule=_bodyRegionDisjunction)
 
         disjunctionTransform = ConvexHull_Transformation()
 #         disjunctionTransform = BigM_Transformation()

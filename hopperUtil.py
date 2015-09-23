@@ -84,6 +84,18 @@ def extractFootForce(m):
 def extractTotalTorque(m):
     return np.atleast_2d(np.array([m.T[ti].value for ti in m.t]))
 
+def extractRegionIndicators(m):
+    return np.dstack([np.vstack([np.array([getattr(m, '%sindicator_var' % m.footRegionConstraints[region, foot, ti].cname()).value for ti in m.t]) for region in m.REGION_INDEX]) for foot in m.feet])
+
+def extractBodyRegionIndicators(m, hop):
+    def extractIndicatorForRegion(region):
+        if hop.regions[region]['mu'] == 0.0:
+            return np.array([getattr(m, '%sindicator_var' % m.bodyRegionConstraints[region, ti].cname()).value for ti in m.t])
+        else:
+            return np.zeros([1, len(m.t)])
+
+    return np.vstack([extractIndicatorForRegion(region) for region in m.REGION_INDEX])
+
 def fixIntegerVariables(m):
     for var in m.component_data_objects(Var):
         if not var.is_continuous():
