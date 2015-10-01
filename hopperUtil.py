@@ -33,7 +33,7 @@ def constructMDTModel(m_nlp, desiredPrecision, dt=None):
     maxVal = (fBounds[1] - fBounds[0])*(footBounds[1] - footBounds[0])
     precision = 1+0*int(np.ceil(-np.log2(desiredPrecision/maxVal)))
     print 'MDT precision: %d' % precision
-    m = mdt.create_using(m, verbose=True, precision=precision, discretize=[discretizationVar])
+    m = mdt.create_using(m, verbose=True, precision=desiredPrecision, discretize=[discretizationVar])
 
     for z_data in m.z.values():
         z_data._component().branchPriority = 1
@@ -62,39 +62,6 @@ def constructGurobiSolver(**kwargs):
     #opt.set_options('Threads=%f' % threads)
     # opt.set_options('Seed=0')
     #opt.set_options('Presolve=2')
-
-def extractTime(m):
-    return np.cumsum([0.]+[m.dt[ti].value for ti in m.t][:-1])
-
-def extractPostition(m):
-    return np.vstack([np.array([m.r[xz, ti].value for ti in m.t]) for xz in m.R2_INDEX])
-
-def extractOrientation(m):
-    return np.atleast_2d(np.array([m.th[ti].value for ti in m.t]))
-
-def extractHipPosition(m):
-    return np.dstack([np.vstack([np.array([m.hip[foot, xz, ti].value for ti in m.t]) for xz in m.R2_INDEX]) for foot in m.feet])
-
-def extractRelativeFootPosition(m):
-    return np.dstack([np.vstack([np.array([m.p[foot, xz, ti].value for ti in m.t]) for xz in m.R2_INDEX]) for foot in m.feet])
-
-def extractFootForce(m):
-    return np.dstack([np.vstack([np.array([m.f[foot, xz, ti].value for ti in m.t]) for xz in m.R2_INDEX]) for foot in m.feet])
-
-def extractTotalTorque(m):
-    return np.atleast_2d(np.array([m.T[ti].value for ti in m.t]))
-
-def extractRegionIndicators(m):
-    return np.dstack([np.vstack([np.array([getattr(m, '%sindicator_var' % m.footRegionConstraints[region, foot, ti].cname()).value for ti in m.t]) for region in m.REGION_INDEX]) for foot in m.feet])
-
-def extractBodyRegionIndicators(m, hop):
-    def extractIndicatorForRegion(region):
-        if hop.regions[region]['mu'] == 0.0:
-            return np.array([getattr(m, '%sindicator_var' % m.bodyRegionConstraints[region, ti].cname()).value for ti in m.t])
-        else:
-            return np.zeros([1, len(m.t)])
-
-    return np.vstack([extractIndicatorForRegion(region) for region in m.REGION_INDEX])
 
 def fixIntegerVariables(m):
     for var in m.component_data_objects(Var):

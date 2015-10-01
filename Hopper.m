@@ -18,6 +18,7 @@ classdef Hopper < handle
     f_data_vis
     th_data    
     T_data     
+    k_data     
     q_data
     T_actual
     region_indicators
@@ -85,10 +86,11 @@ classdef Hopper < handle
       obj.r_data          = obj.leg_length*data.r;
       obj.r_hip_data      = obj.leg_length*data.r_hip;
       obj.p_data          = obj.leg_length*data.p;
-      obj.f_data          = data.f;%*obj.rbm_vis.getMass()*9.81;
-      obj.f_data_vis      = data.f*2*obj.leg_length;%*obj.rbm_vis.getMass()*9.81;
+      obj.f_data          = data.f;%*obj.littleDog.getMass()*9.81;
+      obj.f_data_vis      = data.f*2*obj.leg_length;%*obj.littleDog.getMass()*9.81;
       obj.th_data         = data.th;
-      obj.T_data          = data.T*obj.rbm_vis.getMass()*9.81*obj.leg_length;
+      obj.T_data          = data.T*obj.littleDog.getMass()*9.81*obj.leg_length;
+      obj.k_data          = data.k*(obj.littleDog.getMass()*obj.leg_length^2)*sqrt(9.81/obj.leg_length);
       obj.region_indicators = round(data.region_indicators);
       obj.body_region_indicators = round(data.body_region_indicators);
       N = size(obj.r_data, 2);
@@ -168,11 +170,13 @@ classdef Hopper < handle
       assert(~isempty(obj.r_data), 'You must load data first!');
       robot = obj.littleDog;
       nq = robot.getNumPositions();
+      min_distance = 0.03;
       foot = struct('id',[],'in_stance',[]);
       foot(1,1).id = robot.findFrameId('front_left_foot_center');
       foot(1,2).id = robot.findFrameId('front_right_foot_center'); 
       foot(2,1).id = robot.findFrameId('back_left_foot_center');
       foot(2,2).id = robot.findFrameId('back_right_foot_center');
+      foot_positions = bsxfun(@plus, obj.r_data, obj.r_hip_data + obj.p_data);
       N = size(obj.r_data, 2);
 
       % Load nominal data
@@ -185,11 +189,36 @@ classdef Hopper < handle
       dt = diff(obj.t_data);
       dt_range = [min(dt), max(dt)];
       tf_range = [N*dt_range(1), N*dt_range(2)];
+      %tf_range = [obj.t_data(end), obj.t_data(end)];
+      
+      % Compute q_nom
+      q_nom = zeros(nq, N);
+      foot_constraints = cell(2,2);
+      for n = 1:N
+        for i = 1:2 %front-back
+          for j = 1:2 %left-right
+            lb = NaN(3,1);
+            lb([1,3]) = foot_positions(:, n, i);
+            ub = lb;
+            foot_constraints{i, j} = WorldPositionConstraint(robot, foot(i,j).id, zeros(3,1), lb, ub);
+          end
+        end
+        lb = zeros(3, 1);
+        lb([1,3]) = obj.r_data(:, n);
+        ub = lb;
+        com_constraint = WorldCoMConstraint(robot, lb, ub);
+        min_distance_constraint = MinDistanceConstraint(robot, min_distance);
+        ikoptions = IKoptions(robot);
+        [q_nom(:, n), info, infeasible_constraint] = robot.inverseKin(qstar, qstar, foot_constraints{:}, com_constraint,  ikoptions);
+        assert(info < 10)
+      end
+      %keyboard
+
 
       % Set up cost variables
-      q_nom = bsxfun(@times,qstar,ones(1,N));
-      q_nom(5,:) = obj.th_data;
-      q_nom([1,3],:) = obj.r_data;
+      %q_nom = bsxfun(@times,qstar,ones(1,N));
+      %q_nom(5,:) = obj.th_data;
+      %q_nom([1,3],:) = obj.r_data;
       state_cost = Point(getStateFrame(robot),ones(getNumStates(robot),1));
       state_cost.base_x = 0;
       state_cost.base_y = 0;
@@ -200,7 +229,7 @@ classdef Hopper < handle
       state_cost.back_left_hip_roll = 5;
       state_cost.back_right_hip_roll = 5;
       state_cost = double(state_cost);
-      Q = diag(state_cost(1:nq)); 
+      Q = 1e2*diag(state_cost(1:nq)); 
       Qv = diag(state_cost(nq+1:end));
       Q_comddot = diag([1,1,1]);
       Q_contact_force = 5*eye(3);
@@ -216,6 +245,14 @@ classdef Hopper < handle
           mu = double(obj.regions(j).mu);
           if mu > 0
             idx = find(obj.region_indicators(j, :, i));
+            end_idx = find(diff(idx) ~= 1);
+            start_idx = end_idx + 1;
+            start_idx = [1, start_idx];
+            end_idx = [end_idx,numel(idx)];
+            time_index = cell(numel(start_idx),1);
+            for l = 1:numel(start_idx)
+              time_index{l} = idx(start_idx(l):(end_idx(l)-1));
+            end
             if ~isempty(idx)
               for k = 1:2 % left-right
                 FC_axis = zeros(3,1);
@@ -224,7 +261,7 @@ classdef Hopper < handle
                 FC_perp2 = cross(FC_axis, FC_perp1);
                 FC_edge = bsxfun(@plus, FC_axis, mu*(bsxfun(@times,cos(FC_angles),FC_perp1) + ...
                   bsxfun(@times,sin(FC_angles),FC_perp2)));
-                contact_wrench_struct(end+1).active_knot = idx;
+                contact_wrench_struct(end+1).active_knot = setdiff(idx, end_idx);
                 %contact_wrench_struct(end).cw = LinearFrictionConeWrench(robot,foot(i,k).id,zeros(3,1),FC_edge);
                 contact_wrench_struct(end).cw = FrictionConeWrench(robot,foot(i,k).id,zeros(3,1),mu,FC_axis);
               end
@@ -236,37 +273,48 @@ classdef Hopper < handle
       options.time_option = 2;
       prog = ComDynamicsFullKinematicsPlanner(robot,N,tf_range,Q_comddot,Qv,Q,q_nom,Q_contact_force,contact_wrench_struct,options);
 
+      % Add velocity constraints
+      max_joint_velocity = 4*pi;
+      lb = -max_joint_velocity*ones(nq-6, N);
+      ub = max_joint_velocity*ones(nq-6, N);
+      prog = prog.addConstraint(BoundingBoxConstraint(lb, ub), prog.v_inds(7:end, :));
+
       % Add collision avoidance
-      min_distance = 0.03;
       prog = prog.addRigidBodyConstraint(MinDistanceConstraint(robot, min_distance),1:N);
 
       % Add Timestep bounds
-      %h_min = dt_range(1); h_max = dt_range(2);
+      h_min = dt_range(1); h_max = dt_range(2);
       %prog = prog.addBoundingBoxConstraint(BoundingBoxConstraint(h_min*ones(N-1,1),h_max*ones(N-1,1)),prog.h_inds(:));
-      prog = prog.addBoundingBoxConstraint(BoundingBoxConstraint(dt, dt),prog.h_inds(:));
+      prog = prog.addConstraint(ConstantConstraint(dt), prog.h_inds(:));
 
       % Add symmetry constraints
       prog = prog.addConstraint(obj.symmetryConstraint(obj.littleDog, 1:N), prog.q_inds(:));
 
       % Add initial conditions
-      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.H_inds(:,1));
-      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.Hdot_inds(:,1));
-      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comdot_inds(:,1));
-      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comddot_inds(:,1));
+      %prog = prog.addConstraint(ConstantConstraint(qstar(7:end)), prog.q_inds(7:end,1));
+      %prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.H_inds(:,1));
+      %prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.Hdot_inds(:,1));
+      prog = prog.addConstraint(ConstantConstraint(obj.r_data(1,1)), prog.com_inds(1,1));
+      %prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comdot_inds(:,1));
+      %prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comddot_inds(:,1));
       prog = prog.addConstraint(ConstantConstraint(zeros(nq,1)), prog.v_inds(:,1));
 
       % Add final conditions
-      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.H_inds(:,N));
+      %prog = prog.addConstraint(ConstantConstraint(qstar(7:end)), prog.q_inds(7:end,N));
+      %prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.H_inds(:,N));
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.Hdot_inds(:,N));
+      prog = prog.addConstraint(ConstantConstraint(obj.r_data(1,N)), prog.com_inds(1,N));
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comdot_inds(:,N));
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comddot_inds(:,N));
       prog = prog.addConstraint(ConstantConstraint(zeros(nq,1)), prog.v_inds(:,N));
 
       % Add constraints on base
-      tol = 0.05;
+      tol = 0.1;
       prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(1,:)-tol, obj.r_data(1,:)+tol), prog.com_inds(1,:));
       prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(2,:)-tol, obj.r_data(2,:)+tol), prog.com_inds(3,:));
       %prog = prog.addConstraint(BoundingBoxConstraint(obj.th_data, obj.th_data), prog.q_inds(5,:));
+      %tol = 0.0;
+      prog = prog.addConstraint(BoundingBoxConstraint(obj.k_data-tol, obj.k_data+tol), prog.H_inds(2,:));
       prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(2,:));
       prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(4,:));
       prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(6,:));
@@ -274,19 +322,20 @@ classdef Hopper < handle
 
       % Foot region constraints
       foot_position_fcn = cell(2);
-      foot_positions = bsxfun(@plus, obj.r_data, obj.r_hip_data + obj.p_data);
       for i = 1:2
         for k = 1:2
           foot_position_fcn{i, k} = drakeFunction.kinematic.WorldPosition(robot, foot(i,k).id);
           for n = 1:N
-            lb = -Inf(3,1);
-            ub = Inf(3,1);
-            tol = 0.02;
-            lb([1,3]) = foot_positions(:, n, i) - tol;
-            ub([1,3]) = foot_positions(:, n, i) + tol;
-            constraint = DrakeFunctionConstraint(lb, ub, foot_position_fcn{i,k});
+            tol = sqrt(eps);
+            lb = -tol*ones(2,1);
+            ub = tol*ones(2,1);
+            xz_error_fcn = drakeFunction.Affine([1, 0, 0; 0, 0, 1], -foot_positions(:, n, i));
+            norm_squared_fcn = drakeFunction.euclidean.NormSquared(2);
+            cost = DrakeFunctionConstraint(-Inf, Inf, norm_squared_fcn(xz_error_fcn(foot_position_fcn{i,k})));
+            constraint = DrakeFunctionConstraint(lb, ub, xz_error_fcn(foot_position_fcn{i,k}));
             cnstr_inds = prog.q_inds(:,n);
-            prog = prog.addConstraint(constraint,cnstr_inds);
+            %prog = prog.addCost(cost, cnstr_inds);
+            prog = prog.addConstraint(constraint, cnstr_inds);
           end
         end
       end
@@ -314,7 +363,7 @@ classdef Hopper < handle
               constraint = DrakeFunctionConstraint(lb, ub, region_fcn(foot_position_fcn{i,k}));
               for time_index = reshape(idx, 1, [])
                 cnstr_inds = prog.q_inds(:,time_index);
-                prog = prog.addConstraint(constraint,cnstr_inds);
+                %prog = prog.addConstraint(constraint,cnstr_inds);
               end
               if obj.regions(j).mu > 0
                 % stance feet stationary constraints
@@ -326,8 +375,15 @@ classdef Hopper < handle
                 for l = 1:numel(start_idx)
                   time_index{l} = idx(start_idx(l):end_idx(l));
                 end
-                time_index
-                prog = prog.addRigidBodyConstraint(WorldFixedPositionConstraint(robot,foot(i,k).id, zeros(3,1)),time_index);
+                %prog = prog.addRigidBodyConstraint(WorldFixedPositionConstraint(robot,foot(i,k).id, zeros(3,1)),time_index);
+              else
+                % swing feet collision avoidance
+                idx = setdiff([idx-1, idx+1], idx);
+                idx(idx < 1 | idx > N) = [];
+                for time_index = reshape(idx, 1, [])
+                  cnstr_inds = prog.q_inds(:,time_index);
+                  %prog = prog.addConstraint(constraint,cnstr_inds);
+                end
               end
             end
           end
@@ -336,14 +392,20 @@ classdef Hopper < handle
 
       % Set up seed
       x_seed = zeros(prog.num_vars,1);
-      q_seed = linspacevec(q0,qf,N);
+      q_seed = q_nom;
       %q_seed([1, 3], :) = obj.r_data;
-      q_seed(5, :) = obj.th_data;
+      %q_seed(5, :) = obj.th_data;
       v_seed = gradient(q_seed);
       com_seed = zeros(3, N);
       com_seed([1, 3], :) = obj.r_data;
       comdot_seed = gradient(com_seed);
       comddot_seed = gradient(comdot_seed);
+      I = obj.getDimensionlessMomentOfInertia()*obj.littleDog.getMass()*obj.leg_length^2;
+      H_seed = zeros(3, N);
+      H_seed(2,:) = obj.k_data;
+      Hdot_seed = gradient(H_seed);
+      x_seed(prog.H_inds(:)) = reshape(H_seed,[],1);
+      x_seed(prog.Hdot_inds(:)) = reshape(Hdot_seed,[],1);
       x_seed(prog.h_inds) = dt;
       x_seed(prog.q_inds(:)) = reshape(q_seed,[],1);
       x_seed(prog.v_inds(:)) = reshape(v_seed,[],1);
@@ -366,7 +428,6 @@ classdef Hopper < handle
       prog = prog.setSolverOptions('snopt','superbasicslimit',2000);
       prog = prog.setSolverOptions('snopt','linesearchtolerance',0.9);
       prog = prog.setSolverOptions('snopt','print','snopt.out');
-      prog = prog.setSolverOptions('snopt','sense','Feasible point');
 
       % Solve trajectory optimization
       tic

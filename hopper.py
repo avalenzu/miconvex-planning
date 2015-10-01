@@ -92,17 +92,54 @@ class Hopper:
     def playback(self, speed=1.):
         self.eng.playback(self.matlabHopper, speed, nargout=0)
 
+    def extractTime(self, m):
+        return np.cumsum([0.]+[m.dt[ti].value for ti in m.t][:-1])
+
+    def extractPostition(self, m):
+        return np.vstack([np.array([m.r[xz, ti].value for ti in m.t]) for xz in m.R2_INDEX])
+
+    def extractOrientation(self, m):
+        return np.atleast_2d(np.array([m.th[ti].value for ti in m.t]))
+
+    def extractHipPosition(self, m):
+        return np.dstack([np.vstack([np.array([m.hip[foot, xz, ti].value for ti in m.t]) for xz in m.R2_INDEX]) for foot in m.feet])
+
+    def extractRelativeFootPosition(self, m):
+        return np.dstack([np.vstack([np.array([m.p[foot, xz, ti].value for ti in m.t]) for xz in m.R2_INDEX]) for foot in m.feet])
+
+    def extractFootForce(self, m):
+        return np.dstack([np.vstack([np.array([m.f[foot, xz, ti].value for ti in m.t]) for xz in m.R2_INDEX]) for foot in m.feet])
+
+    def extractTotalTorque(self, m):
+        return np.atleast_2d(np.array([m.T[ti].value for ti in m.t]))
+
+    def extractAngularMomentum (self, m):
+        return np.atleast_2d(np.array([self.momentOfInertia*m.w[ti].value for ti in m.t]))
+
+    def extractRegionIndicators(self, m):
+        return np.dstack([np.vstack([np.array([getattr(m, '%sindicator_var' % m.footRegionConstraints[region, foot, ti].cname()).value for ti in m.t]) for region in m.REGION_INDEX]) for foot in m.feet])
+
+    def extractBodyRegionIndicators(self, m):
+        def extractIndicatorForRegion(region):
+            if self.regions[region]['mu'] == 0.0:
+                return np.array([getattr(m, '%sindicator_var' % m.bodyRegionConstraints[region, ti].cname()).value for ti in m.t])
+            else:
+                return np.zeros([1, len(m.t)])
+
+        return np.vstack([extractIndicatorForRegion(region) for region in m.REGION_INDEX])
+
     def loadResults(self, m):
         data = dict()
-        data['t'] =                 matlab.double(hopperUtil.extractTime(m).tolist())
-        data['r'] =                 matlab.double(hopperUtil.extractPostition(m).tolist())
-        data['th'] =                matlab.double(hopperUtil.extractOrientation(m).tolist())
-        data['r_hip'] =             matlab.double(hopperUtil.extractHipPosition(m).tolist())
-        data['p'] =                 matlab.double(hopperUtil.extractRelativeFootPosition(m).tolist())
-        data['f'] =                 matlab.double(hopperUtil.extractFootForce(m).tolist())
-        data['T'] =                 matlab.double(hopperUtil.extractTotalTorque(m).tolist())
-        data['region_indicators'] = matlab.double(hopperUtil.extractRegionIndicators(m).tolist())
-        data['body_region_indicators'] = matlab.double(hopperUtil.extractBodyRegionIndicators(m, self).tolist())
+        data['t'] =                 matlab.double(self.extractTime(m).tolist())
+        data['r'] =                 matlab.double(self.extractPostition(m).tolist())
+        data['th'] =                matlab.double(self.extractOrientation(m).tolist())
+        data['r_hip'] =             matlab.double(self.extractHipPosition(m).tolist())
+        data['p'] =                 matlab.double(self.extractRelativeFootPosition(m).tolist())
+        data['f'] =                 matlab.double(self.extractFootForce(m).tolist())
+        data['T'] =                 matlab.double(self.extractTotalTorque(m).tolist())
+        data['k'] =                 matlab.double(self.extractAngularMomentum(m).tolist())
+        data['region_indicators'] = matlab.double(self.extractRegionIndicators(m).tolist())
+        data['body_region_indicators'] = matlab.double(self.extractBodyRegionIndicators(m).tolist())
         self.eng.loadResults(self.matlabHopper, data, nargout=0)
 
     def constructPyomoModel(self):
@@ -144,11 +181,11 @@ class Hopper:
         #model.beta = Var(model.feet, model.BV_INDEX, model.t, within=NonNegativeReals, bounds=(0, self.forceMax))
         model.T = Var(model.t, bounds=(-self.forceMax, self.forceMax))
         lb = {'x': -1, 'z': -1}
-        ub = {'x':  1, 'z': -0.75}
+        ub = {'x':  1, 'z': -0.85}
         def _pBounds(m, foot, i, t):
             return (math.sqrt(2)/2*lb[i], math.sqrt(2)/2*ub[i])
         model.p = Var(model.feet, model.R2_INDEX, model.t, bounds=_pBounds)
-        model.pd = Var(model.feet, model.R2_INDEX, model.t, bounds=(-self.velocityMax, self.velocityMax))
+        model.pd = Var(model.feet, model.R2_INDEX, model.t, bounds=(-self.velocityMax/2, self.velocityMax/2))
         model.pdd = Var(model.feet, model.R2_INDEX, model.t, bounds=(-self.velocityMax, self.velocityMax))
         model.hip = Var(model.feet, model.R2_INDEX, model.t, bounds=(-1, 1))
         model.footRelativeToCOM = Var(model.feet, model.R2_INDEX, model.t, bounds=(-1, 1))
@@ -373,58 +410,90 @@ class Hopper:
 #         disjunctionTransform = BigM_Transformation()
         disjunctionTransform.apply_to(model)
 
+        def _stanceDurationRule(m, foot, region, t):
+            window = 2
+            if self.regions[region]['mu'] != 0.:
+                t_start = max(1, t - window)
+                t_end = min(m.t[-1], t + window) + 1
+                indicators = [getattr(m, 'footRegionConstraints[%d,%s,%d]indicator_var' % (region, foot, ti))
+                              for ti in range(t_start, t_end)]
+                current_indicator = getattr(m, 'footRegionConstraints[%d,%s,%d]indicator_var' % (region, foot, t))
+                bigM = window + 1
+                return -sum(indicators) <= -bigM + bigM*(1 - current_indicator)
+            else:
+                return Constraint.Skip
+        #model.stanceDurationConstraint = Constraint(model.feet, model.REGION_INDEX, model.t, rule=_stanceDurationRule)
+
+        def _initialStance(m, foot, region):
+            if self.regions[region]['mu'] == 0.:
+                current_indicator = getattr(m, 'footRegionConstraints[%d,%s,1]indicator_var' % (region, foot))
+                return current_indicator == 0
+            else:
+                return Constraint.Skip
+
+        model.initialStance = Constraint(model.feet, model.REGION_INDEX, rule=_initialStance)
+
+        def _finalStance(m, foot, region):
+            if self.regions[region]['mu'] == 0.:
+                current_indicator = getattr(m, 'footRegionConstraints[%d,%s,%d]indicator_var' % (region, foot, m.t[-1]))
+                return current_indicator == 0
+            else:
+                return Constraint.Skip
+
+        model.finalStance = Constraint(model.feet, model.REGION_INDEX, rule=_finalStance)
+
         return model
 
-def testHopper(hopper, r0, rf, legLength):
-    hopper.constructPyomoModel()
-    m_nlp = hopper.model
+#def testHopper(hopper, r0, rf, legLength):
+    #hopper.constructPyomoModel()
+    #m_nlp = hopper.model
 
-    def objRule(m):
+    #def objRule(m):
         #     return sum(m.beta[foot, bv, ti]**2 for foot in m.feet for bv in m.BV_INDEX for ti in m.t)
         #     + sum(m.pdd[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t)
-            return sum(m.f[foot, i, j]**2 + m.pdd[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t) + sum(m.T[ti]**2 for ti in m.t)
+            #return sum(m.f[foot, i, j]**2 + m.pdd[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t) + sum(m.T[ti]**2 for ti in m.t)
 
-    m_nlp.Obj = Objective(rule=objRule, sense=minimize)
+    #m_nlp.Obj = Objective(rule=objRule, sense=minimize)
 
-    m_nlp.rx0 = Constraint(expr=m_nlp.r['x',m_nlp.t[1]] == r0[0]/legLength)
+    #m_nlp.rx0 = Constraint(expr=m_nlp.r['x',m_nlp.t[1]] == r0[0]/legLength)
     #m_nlp.rz0 = Constraint(expr=m_nlp.r['z',m_nlp.t[1]] <= 1)
 
-    m_nlp.th0 = Constraint(expr=m_nlp.th[m_nlp.t[1]] == 0)
+    #m_nlp.th0 = Constraint(expr=m_nlp.th[m_nlp.t[1]] == 0)
 
-    m_nlp.vx0 = Constraint(expr=m_nlp.v['x',m_nlp.t[1]] == 0)
-    m_nlp.vz0 = Constraint(expr=m_nlp.v['z',m_nlp.t[1]] == 0)
+    #m_nlp.vx0 = Constraint(expr=m_nlp.v['x',m_nlp.t[1]] == 0)
+    #m_nlp.vz0 = Constraint(expr=m_nlp.v['z',m_nlp.t[1]] == 0)
 
-    m_nlp.w0 = Constraint(expr=m_nlp.w[m_nlp.t[1]] == 0)
+    #m_nlp.w0 = Constraint(expr=m_nlp.w[m_nlp.t[1]] == 0)
 
     #m_nlp.Fx0 = Constraint(expr=m_nlp.F['x', m_nlp.t[1]] == 0)
     #m_nlp.Fz0 = Constraint(expr=m_nlp.F['z', m_nlp.t[1]] == 0)
     #m_nlp.T0 = Constraint(expr=m_nlp.T[m_nlp.t[1]] == 0)
 
-    m_nlp.rxf = Constraint(expr=m_nlp.r['x',m_nlp.t[-1]] >= rf[0]/legLength)
-    m_nlp.rzf = Constraint(expr=m_nlp.r['z',m_nlp.t[-1]] == m_nlp.r['z', m_nlp.t[1]])
+    #m_nlp.rxf = Constraint(expr=m_nlp.r['x',m_nlp.t[-1]] >= rf[0]/legLength)
+    #m_nlp.rzf = Constraint(expr=m_nlp.r['z',m_nlp.t[-1]] == m_nlp.r['z', m_nlp.t[1]])
 
-    m_nlp.thf = Constraint(expr=m_nlp.th[m_nlp.t[-1]] == 0)
+    #m_nlp.thf = Constraint(expr=m_nlp.th[m_nlp.t[-1]] == 0)
 
-    m_nlp.vxf = Constraint(expr=m_nlp.v['x',m_nlp.t[-1]] == m_nlp.v['x',m_nlp.t[1]])
-    m_nlp.vzf = Constraint(expr=m_nlp.v['z',m_nlp.t[-1]] == 0)
+    #m_nlp.vxf = Constraint(expr=m_nlp.v['x',m_nlp.t[-1]] == m_nlp.v['x',m_nlp.t[1]])
+    #m_nlp.vzf = Constraint(expr=m_nlp.v['z',m_nlp.t[-1]] == 0)
 
-    m_nlp.wf = Constraint(expr=m_nlp.w[m_nlp.t[-1]] == 0)
+    #m_nlp.wf = Constraint(expr=m_nlp.w[m_nlp.t[-1]] == 0)
 
-    m_nlp.Fxf = Constraint(expr=m_nlp.F['x', m_nlp.t[-1]] == 0)
-    m_nlp.Fzf = Constraint(expr=m_nlp.F['z', m_nlp.t[-1]] == 0)
-    m_nlp.Tf = Constraint(expr=m_nlp.T[m_nlp.t[-1]] == 0)
+    #m_nlp.Fxf = Constraint(expr=m_nlp.F['x', m_nlp.t[-1]] == 0)
+    #m_nlp.Fzf = Constraint(expr=m_nlp.F['z', m_nlp.t[-1]] == 0)
+    #m_nlp.Tf = Constraint(expr=m_nlp.T[m_nlp.t[-1]] == 0)
 
-    def _maxVerticalVelocityRule(m, t):
-        return m.v['z', t] <= 0.5
+    #def _maxVerticalVelocityRule(m, t):
+        #return m.v['z', t] <= 0.5
 
     # m_nlp.maxVerticalVelocityConstraint = Constraint(m_nlp.t, rule=_maxVerticalVelocityRule)
 
-    def _periodicFootPosition(m, foot, xz):
-        return m.p[foot, xz, m.t[1]] == m.p[foot, xz, m.t[-1]]
+    #def _periodicFootPosition(m, foot, xz):
+        #return m.p[foot, xz, m.t[1]] == m.p[foot, xz, m.t[-1]]
 
     #m_nlp.periodicFootPosition = Constraint(m_nlp.feet, m_nlp.R2_INDEX, rule=_periodicFootPosition)
 
-    return m_nlp
+    #return m_nlp
 
     #opt = SolverFactory('_gurobi_direct')
     # opt.set_options('mipgap=0.05')
@@ -433,5 +502,3 @@ def testHopper(hopper, r0, rf, legLength):
     #opt.set_options('Threads=%f' % threads)
     # opt.set_options('Seed=0')
     #opt.set_options('Presolve=2')
-
-    #return m, hopper, opt

@@ -7,7 +7,7 @@ from math import sqrt
 from hopper import Hopper
 from hopperUtil import *
 
-desiredPrecision = 4
+desiredPrecision = 2
 N = 20
 tf = 2*1.6
 legLength = 0.16
@@ -37,7 +37,7 @@ hop.nOrientationSectors = 1 #int(floor(np.pi/8/desiredPrecision))
 print 'hop.nOrientationSectors = %d' % hop.nOrientationSectors
 hop.velocityMax = 3.
 hop.positionMax = 1.5*rf[0]/legLength
-hop.forceMax = 2.
+hop.forceMax = 3.
 hop.addPlatform(platform1_start/legLength, platform1_end/legLength, platform1_height/legLength, 1)
 hop.addPlatform(platform2_start/legLength, platform2_end/legLength, platform2_height/legLength, 1)
 hop.addPlatform(platform3_start/legLength, platform3_end/legLength, platform3_height/legLength, 1)
@@ -47,12 +47,27 @@ hop.addFreeBlock(bottom=platform3_height/legLength, left=platform2_end/legLength
 hop.constructVisualizer()
 m_nlp = hop.constructPyomoModel()
 
+#m_nlp.forceSlacks = Var(m_nlp.feet, m_nlp.R2_INDEX, m_nlp.t, bounds=(0.0, hop.forceMax))
+#m_nlp.hipTorqueSlacks = Var(m_nlp.feet, m_nlp.t, bounds=(0.0, hop.forceMax))
+
+#def _forceSlackRuleUB(m, foot, xz, t):
+    #return m.f[foot, xz, t] <= m.forceSlacks[foot, xz, t]
+#m_nlp.forceSlackUBConstraint = Constraint(m_nlp.feet, m_nlp.R2_INDEX, m_nlp.t, rule=_forceSlackRuleUB)
+
+#def _forceSlackRuleLB(m, foot, xz, t):
+    #return m.f[foot, xz, t] >= -m.forceSlacks[foot, xz, t]
+#m_nlp.forceSlackLBConstraint = Constraint(m_nlp.feet, m_nlp.R2_INDEX, m_nlp.t, rule=_forceSlackRuleLB)
+
 def objRule(m):
     #     return sum(m.beta[foot, bv, ti]**2 for foot in m.feet for bv in m.BV_INDEX for ti in m.t)
     #     + sum(m.pdd[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t)
     #return sum(m.f[foot, i, j]**2 + m.pd[foot, i, j]**2 + m.pdd[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t) + sum(m.T[ti]**2 for ti in m.t)
-    return sum(m.f[foot, i, j]**2 + m.pd[foot, i, j]**2  + m.pdd[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t) + sum(m.hipTorque[foot, ti]**2 for foot in m.feet for ti in m.t) + summation(m.dt)
     #return sum(m.f[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t) + sum(m.hipTorque[foot, ti]**2 for foot in m.feet for ti in m.t)
+    #return sum(m.f[foot, i, j]**2 + m.pd[foot, i, j]**2  + m.pdd[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t) + sum(m.hipTorque[foot, ti]**2 for foot in m.feet for ti in m.t) + summation(m.dt)
+
+    return sum(m.f[foot, i, j]**2 + m.pdd[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t) + sum(m.hipTorque[foot, ti]**2 for foot in m.feet for ti in m.t) + summation(m.dt)
+
+    #return summation(m.forceSlacks)
 
 m_nlp.Obj = Objective(rule=objRule, sense=minimize)
 
@@ -94,11 +109,11 @@ def _periodicFootPosition(m, foot, xz):
 
 #m_nlp.periodicFootPosition = Constraint(m_nlp.feet, m_nlp.R2_INDEX, rule=_periodicFootPosition)
 
-#m = constructMDTModel(m_nlp, desiredPrecision)
-m = constructRelaxedModel(m_nlp)
+m = constructMDTModel(m_nlp, desiredPrecision)
+#m = constructRelaxedModel(m_nlp)
 #for z_data in m.z.values():
     #z_data._component().branchPriority = 1
-#m = m_nlp.clone()
+m_nlp_orig = m_nlp.clone()
 #m.dt.fix()
 
 #def _momentRule(m, t):
@@ -110,6 +125,14 @@ def _hipTorqueRule(m, foot, t):
     return m.hipTorque[foot, t] == m.p[foot,'x',t]*m.f[foot,'z',t] - m.p[foot,'z',t]*m.f[foot, 'x',t]
 
 m_nlp.hipTorqueConstraint = Constraint(m_nlp.feet, m_nlp.t, rule=_hipTorqueRule)
+
+#def _hipTorqueSlackRuleUB(m, foot, t):
+    #return m.hipTorque[foot, t] <= m.hipTorqueSlacks[foot, t]
+#m_nlp.hipTorqueSlackUBConstraint = Constraint(m_nlp.feet, m_nlp.t, rule=_hipTorqueSlackRuleUB)
+
+#def _hipTorqueSlackRuleLB(m, foot, t):
+    #return m.hipTorque[foot, t] >= -m.hipTorqueSlacks[foot, t]
+#m_nlp.hipTorqueSlackLBConstraint = Constraint(m_nlp.feet, m_nlp.t, rule=_hipTorqueSlackRuleLB)
 
 m_nlp.pwSin.deactivate()
 m_nlp.pwCos.deactivate()
@@ -126,6 +149,7 @@ opt_nlp = SolverFactory('ipopt')
 opt_minlp = constructCouenneSolver()
 
 #opt = constructGurobiSolver(mipgap=0.8, MIPFocus=1, TimeLimit=90., Threads=11)
-opt = constructGurobiSolver(mipgap=0.5, TimeLimit=120., Threads=11)
+opt = constructGurobiSolver(mipgap=0.8, TimeLimit=120., Threads=11)
+#opt = constructGurobiSolver(TimeLimit=50., Threads=11)
 
 hop.constructVisualizer()
