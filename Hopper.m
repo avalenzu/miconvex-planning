@@ -196,7 +196,7 @@ classdef Hopper < handle
       % Set up time parameters
       dt = diff(obj.t_data);
       dt_range = [min(dt), max(dt)];
-      tf_range = [N*dt_range(1), N*dt_range(2)];
+      tf_range = [0.5*N*dt_range(1), 2*N*dt_range(2)];
       %tf_range = [obj.t_data(end), obj.t_data(end)];
       
       % Compute q_nom
@@ -238,7 +238,8 @@ classdef Hopper < handle
       state_cost.back_right_hip_roll = 5;
       state_cost = double(state_cost);
       Q = 1e2*diag(state_cost(1:nq)); 
-      Qv = diag(state_cost(nq+1:end));
+      state_cost(nq+1:nq+6) = 0;
+      Qv = 1e3*diag(state_cost(nq+1:end));
       Q_comddot = diag([1,1,1]);
       Q_contact_force = 5*eye(3);
 
@@ -282,18 +283,18 @@ classdef Hopper < handle
       prog = ComDynamicsFullKinematicsPlanner(robot,N,tf_range,Q_comddot,Qv,Q,q_nom,Q_contact_force,contact_wrench_struct,options);
 
       % Add velocity constraints
-      max_joint_velocity = 4*pi;
+      max_joint_velocity = 3*pi;
       lb = -max_joint_velocity*ones(nq-6, N);
       ub = max_joint_velocity*ones(nq-6, N);
-      prog = prog.addConstraint(BoundingBoxConstraint(lb, ub), prog.v_inds(7:end, :));
+      %prog = prog.addConstraint(BoundingBoxConstraint(lb, ub), prog.v_inds(7:end, :));
 
       % Add collision avoidance
       prog = prog.addRigidBodyConstraint(MinDistanceConstraint(robot, min_distance),1:N);
 
       % Add Timestep bounds
       h_min = dt_range(1); h_max = dt_range(2);
-      %prog = prog.addBoundingBoxConstraint(BoundingBoxConstraint(h_min*ones(N-1,1),h_max*ones(N-1,1)),prog.h_inds(:));
-      prog = prog.addConstraint(ConstantConstraint(dt), prog.h_inds(:));
+      prog = prog.addBoundingBoxConstraint(BoundingBoxConstraint(h_min*ones(N-1,1),h_max*ones(N-1,1)),prog.h_inds(:));
+      %prog = prog.addConstraint(ConstantConstraint(dt), prog.h_inds(:));
 
       % Add symmetry constraints
       prog = prog.addConstraint(obj.symmetryConstraint(obj.littleDog, 1:N), prog.q_inds(:));
@@ -318,11 +319,9 @@ classdef Hopper < handle
 
       % Add constraints on base
       tol = 0.5;
-      prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(1,:)-tol, obj.r_data(1,:)+tol), prog.com_inds(1,:));
-      prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(2,:)-tol, obj.r_data(2,:)+tol), prog.com_inds(3,:));
-      %prog = prog.addConstraint(BoundingBoxConstraint(obj.th_data, obj.th_data), prog.q_inds(5,:));
-      %tol = 0.0;
-      prog = prog.addConstraint(BoundingBoxConstraint(obj.k_data-tol, obj.k_data+tol), prog.H_inds(2,:));
+      %prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(1,:)-tol, obj.r_data(1,:)+tol), prog.com_inds(1,:));
+      %prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(2,:)-tol, obj.r_data(2,:)+tol), prog.com_inds(3,:));
+      %prog = prog.addConstraint(BoundingBoxConstraint(obj.k_data-tol, obj.k_data+tol), prog.H_inds(2,:));
       prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(2,:));
       prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(4,:));
       prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(6,:));

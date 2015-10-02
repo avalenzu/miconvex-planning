@@ -1,5 +1,6 @@
 from __future__ import division
 import numpy as np
+from uuid import uuid4
 from pyomo.environ import *
 from pyomo.opt import SolverFactory
 
@@ -8,9 +9,9 @@ from hopper import Hopper
 from hopperUtil import *
 
 desiredPrecision = 2
-N = 20
+N = 25
 tf = 2*1.6
-legLength = 0.18
+legLength = 0.16
 r0 = [0, legLength/2]
 rf = [6*legLength, legLength]
 v0 = [0, 0]
@@ -20,7 +21,7 @@ hipOffset = {'front': {'x': 0.5, 'z': -0.25}, 'hind': {'x': -0.5, 'z': -0.25}}
 matlab_hopper = eng.Hopper(legLength, hipOffset)
 hop = Hopper(N, eng, matlab_hopper)
 # hop.mdt_precision = int(ceil(-np.log2(desiredPrecision)))
-hop.dtBounds = tuple((1/sqrt(legLength/9.81))*np.array([0.01, 0.2]))
+hop.dtBounds = tuple((1/sqrt(legLength/9.81))*np.array([0.05, 0.2]))
 hop.dtNom = 0.1*(1/sqrt(legLength/9.81))
 hop.rotationMax = np.pi/8
 hop.nOrientationSectors = 1 #int(floor(np.pi/8/desiredPrecision))
@@ -72,8 +73,26 @@ def normLInfinity(m, var):
 
     return getattr(m, slackName)
 
+def exprNormLInfinity(m, expr, slackMax):
+    slackName = 'slack_%s' % str(uuid4()).replace('-','')
+    lbName = '%sLB' % slackName
+    ubName = '%sUB' % slackName
+    setattr(m, slackName, Var(bounds=(0.0, slackMax)))
 
-norm = normLInfinity;
+    def _lbRule(m):
+        return expr <= getattr(m, slackName)
+    setattr(m, lbName, Constraint(rule=_lbRule))
+
+    def _ubRule(m):
+        return expr >= -getattr(m, slackName)
+    setattr(m, ubName, Constraint(rule=_ubRule))
+
+    return getattr(m, slackName)
+
+
+norm = normL0;
+#norm = normL2;
+#norm = normLInfinity;
 
 def objRule(m):
     #     return sum(m.beta[foot, bv, ti]**2 for foot in m.feet for bv in m.BV_INDEX for ti in m.t)
@@ -83,8 +102,16 @@ def objRule(m):
     #return sum(m.f[foot, i, j]**2 + m.pd[foot, i, j]**2  + m.pdd[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t) + sum(m.hipTorque[foot, ti]**2 for foot in m.feet for ti in m.t) + summation(m.dt)
 
     #return sum(m.f[foot, i, j]**2 + m.pdd[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t) + sum(m.hipTorque[foot, ti]**2 for foot in m.feet for ti in m.t) + summation(m.dt)
-
-    return norm(m, m.f) + norm(m, m.pdd) + norm(m, m.hipTorque) + summation(m.dt)
+    footRegionChanges = 0.0
+    for t in m.t:
+        if t != m.t[-1]:
+            for region in m.REGION_INDEX:
+                if hop.regions[region]['mu'] != 0.:
+                    for foot in m.feet:
+                        current_indicator = getattr(m, 'footRegionConstraints[%d,%s,%d]indicator_var' % (region, foot, t));
+                        next_indicator = getattr(m, 'footRegionConstraints[%d,%s,%d]indicator_var' % (region, foot, t+1));
+                        footRegionChanges += exprNormLInfinity(m, next_indicator - current_indicator, 1.0)
+    return footRegionChanges + norm(m, m.f) + norm(m, m.hipTorque)
 
 m_nlp.Obj = Objective(rule=objRule, sense=minimize)
 
@@ -138,35 +165,28 @@ m_nlp_orig = m_nlp.clone()
 
 #m_nlp.momentAbountCOM = Constraint(m_nlp.t, rule=_momentRule)
 
-#def _hipTorqueRule(m, foot, t):
-    #return m.hipTorque[foot, t] == m.p[foot,'x',t]*m.f[foot,'z',t] - m.p[foot,'z',t]*m.f[foot, 'x',t]
+def _hipTorqueRule(m, foot, t):
+    return m.hipTorque[foot, t] == m.p[foot,'x',t]*m.f[foot,'z',t] - m.p[foot,'z',t]*m.f[foot, 'x',t]
 
-#m_nlp.hipTorqueConstraint = Constraint(m_nlp.feet, m_nlp.t, rule=_hipTorqueRule)
+m_nlp.hipTorqueConstraint = Constraint(m_nlp.feet, m_nlp.t, rule=_hipTorqueRule)
 
-#def _hipTorqueSlackRuleUB(m, foot, t):
-    #return m.hipTorque[foot, t] <= m.hipTorqueSlacks[foot, t]
-#m_nlp.hipTorqueSlackUBConstraint = Constraint(m_nlp.feet, m_nlp.t, rule=_hipTorqueSlackRuleUB)
 
-#def _hipTorqueSlackRuleLB(m, foot, t):
-    #return m.hipTorque[foot, t] >= -m.hipTorqueSlacks[foot, t]
-#m_nlp.hipTorqueSlackLBConstraint = Constraint(m_nlp.feet, m_nlp.t, rule=_hipTorqueSlackRuleLB)
+#m_nlp.pwSin.deactivate()
+#m_nlp.pwCos.deactivate()
 
-m_nlp.pwSin.deactivate()
-m_nlp.pwCos.deactivate()
+#def _cos(m, t):
+    #return m.cth[t] == cos(m.th[t])
+#m_nlp.Cos = Constraint(m_nlp.t, rule=_cos)
 
-def _cos(m, t):
-    return m.cth[t] == cos(m.th[t])
-m_nlp.Cos = Constraint(m_nlp.t, rule=_cos)
-
-def _sin(m, t):
-    return m.sth[t] == sin(m.th[t])
-m_nlp.Sin = Constraint(m_nlp.t, rule=_sin)
+#def _sin(m, t):
+    #return m.sth[t] == sin(m.th[t])
+#m_nlp.Sin = Constraint(m_nlp.t, rule=_sin)
 
 opt_nlp = SolverFactory('ipopt')
 opt_minlp = constructCouenneSolver()
 
 #opt = constructGurobiSolver(mipgap=0.8, MIPFocus=1, TimeLimit=90., Threads=11)
-opt = constructGurobiSolver(mipgap=0.8, TimeLimit=120., Threads=11)
+opt = constructGurobiSolver(TimeLimit=120., Threads=11)
 #opt = constructGurobiSolver(TimeLimit=50., Threads=11)
 
 hop.constructVisualizer()
