@@ -32,17 +32,48 @@ hop.forceMax = 3.
 addFlatWorld(hop, legLength)
 hop.constructVisualizer()
 m_nlp = hop.constructPyomoModel()
+def normL2(m, var):
+    index = var.index_set()
+    return sum(var[i]**2 for i in index)
 
-m_nlp.forceSlacks = Var(m_nlp.feet, m_nlp.R2_INDEX, m_nlp.t, bounds=(0.0, hop.forceMax))
-#m_nlp.hipTorqueSlacks = Var(m_nlp.feet, m_nlp.t, bounds=(0.0, hop.forceMax))
+def normL1(m, var):
+    index = var.index_set()
+    slackName = '%sSlacks' % var.cname()
+    lbName = '%sLB' % slackName
+    ubName = '%sUB' % slackName
+    slackMax = max([max(np.abs(var[i].bounds)) for i in index])
+    setattr(m, slackName, Var(index, bounds=(0.0, slackMax)))
 
-def _forceSlackRuleUB(m, foot, xz, t):
-    return m.f[foot, xz, t] <= m.forceSlacks[foot, xz, t]
-m_nlp.forceSlackUBConstraint = Constraint(m_nlp.feet, m_nlp.R2_INDEX, m_nlp.t, rule=_forceSlackRuleUB)
+    def _lbRule(m, *args):
+        return var[args] <= getattr(m, slackName)[args]
+    setattr(m, lbName, Constraint(index, rule=_lbRule))
 
-def _forceSlackRuleLB(m, foot, xz, t):
-    return m.f[foot, xz, t] >= -m.forceSlacks[foot, xz, t]
-m_nlp.forceSlackLBConstraint = Constraint(m_nlp.feet, m_nlp.R2_INDEX, m_nlp.t, rule=_forceSlackRuleLB)
+    def _ubRule(m, *args):
+        return var[args] >= -getattr(m, slackName)[args]
+    setattr(m, ubName, Constraint(index, rule=_ubRule))
+
+    return summation(getattr(m, slackName))
+
+def normLInfinity(m, var):
+    index = var.index_set()
+    slackName = '%sSlack' % var.cname()
+    lbName = '%sLB' % slackName
+    ubName = '%sUB' % slackName
+    slackMax = max([max(np.abs(var[i].bounds)) for i in index])
+    setattr(m, slackName, Var(bounds=(0.0, slackMax)))
+
+    def _lbRule(m, *args):
+        return var[args] <= getattr(m, slackName)
+    setattr(m, lbName, Constraint(index, rule=_lbRule))
+
+    def _ubRule(m, *args):
+        return var[args] >= -getattr(m, slackName)
+    setattr(m, ubName, Constraint(index, rule=_ubRule))
+
+    return getattr(m, slackName)
+
+
+norm = normLInfinity;
 
 def objRule(m):
     #     return sum(m.beta[foot, bv, ti]**2 for foot in m.feet for bv in m.BV_INDEX for ti in m.t)
@@ -51,9 +82,9 @@ def objRule(m):
     #return sum(m.f[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t) + sum(m.hipTorque[foot, ti]**2 for foot in m.feet for ti in m.t)
     #return sum(m.f[foot, i, j]**2 + m.pd[foot, i, j]**2  + m.pdd[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t) + sum(m.hipTorque[foot, ti]**2 for foot in m.feet for ti in m.t) + summation(m.dt)
 
-    return sum(m.f[foot, i, j]**2 + m.pdd[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t) + sum(m.hipTorque[foot, ti]**2 for foot in m.feet for ti in m.t) + summation(m.dt)
+    #return sum(m.f[foot, i, j]**2 + m.pdd[foot, i, j]**2 for foot in m.feet for i in m.R2_INDEX for j in m.t) + sum(m.hipTorque[foot, ti]**2 for foot in m.feet for ti in m.t) + summation(m.dt)
 
-    #return summation(m.forceSlacks)
+    return norm(m, m.f) + norm(m, m.pdd) + norm(m, m.hipTorque) + summation(m.dt)
 
 m_nlp.Obj = Objective(rule=objRule, sense=minimize)
 
