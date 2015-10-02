@@ -317,7 +317,7 @@ classdef Hopper < handle
       prog = prog.addConstraint(ConstantConstraint(zeros(nq,1)), prog.v_inds(:,N));
 
       % Add constraints on base
-      tol = 0.1;
+      tol = 0.5;
       prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(1,:)-tol, obj.r_data(1,:)+tol), prog.com_inds(1,:));
       prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(2,:)-tol, obj.r_data(2,:)+tol), prog.com_inds(3,:));
       %prog = prog.addConstraint(BoundingBoxConstraint(obj.th_data, obj.th_data), prog.q_inds(5,:));
@@ -337,9 +337,19 @@ classdef Hopper < handle
             tol = 0*sqrt(eps);
             lb = -tol*ones(2,1);
             ub = tol*ones(2,1);
-            xz_error_fcn = drakeFunction.Affine([1, 0, 0; 0, 0, 1], -foot_positions(:, n, i));
+            if k == 1
+              lb = [lb(1); 0; lb(2)];
+              ub = [ub(1); Inf; ub(2)];
+            else
+              lb = [lb(1); -Inf; lb(2)];
+              ub = [ub(1); 0; ub(2)];
+            end
+            foot_position = zeros(3, 1);
+            foot_position([1, 3]) = foot_positions(:, n, i);
+            %xz_error_fcn = drakeFunction.Affine([1, 0, 0; 0, 0, 1], -foot_positions(:, n, i));
+            xz_error_fcn = drakeFunction.Affine(eye(3), -foot_position);
             norm_squared_fcn = drakeFunction.euclidean.NormSquared(2);
-            cost = DrakeFunctionConstraint(-Inf, Inf, norm_squared_fcn(xz_error_fcn(foot_position_fcn{i,k})));
+            %cost = DrakeFunctionConstraint(-Inf, Inf, norm_squared_fcn(xz_error_fcn(foot_position_fcn{i,k})));
             constraint = DrakeFunctionConstraint(lb, ub, xz_error_fcn(foot_position_fcn{i,k}));
             cnstr_inds = prog.q_inds(:,n);
             %prog = prog.addCost(cost, cnstr_inds);
