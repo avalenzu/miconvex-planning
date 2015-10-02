@@ -177,6 +177,13 @@ classdef Hopper < handle
       foot(2,1).id = robot.findFrameId('back_left_foot_center');
       foot(2,2).id = robot.findFrameId('back_right_foot_center');
       foot_positions = bsxfun(@plus, obj.r_data, obj.r_hip_data + obj.p_data);
+      knee = RigidBodySphere(0.01);
+      for i = 1:2
+        for j = 1:2
+          robot = robot.addCollisionGeometryToBody(robot.getFrame(foot(i,j).id).body_ind, knee);
+        end
+      end
+      robot = robot.compile();
       N = size(obj.r_data, 2);
 
       % Load nominal data
@@ -326,7 +333,7 @@ classdef Hopper < handle
         for k = 1:2
           foot_position_fcn{i, k} = drakeFunction.kinematic.WorldPosition(robot, foot(i,k).id);
           for n = 1:N
-            tol = sqrt(eps);
+            tol = 0*sqrt(eps);
             lb = -tol*ones(2,1);
             ub = tol*ones(2,1);
             xz_error_fcn = drakeFunction.Affine([1, 0, 0; 0, 0, 1], -foot_positions(:, n, i));
@@ -375,7 +382,7 @@ classdef Hopper < handle
                 for l = 1:numel(start_idx)
                   time_index{l} = idx(start_idx(l):end_idx(l));
                 end
-                %prog = prog.addRigidBodyConstraint(WorldFixedPositionConstraint(robot,foot(i,k).id, zeros(3,1)),time_index);
+                prog = prog.addRigidBodyConstraint(WorldFixedPositionConstraint(robot,foot(i,k).id, zeros(3,1)),time_index);
               else
                 % swing feet collision avoidance
                 idx = setdiff([idx-1, idx+1], idx);
@@ -417,6 +424,7 @@ classdef Hopper < handle
           f_seed = zeros(3, N);
           f_seed([1, 3], :) = obj.f_data(:, :, i);
           x_seed(prog.lambda_inds{2*(i-1) + j}(:)) = 0.5*f_seed;
+          %prog = prog.addCost(QuadraticConstraint(-Inf, Inf, eye(numel(f_seed)), -2*f_seed(:)), prog.lambda_inds{2*(i-1) + j}(:));
         end
       end
 

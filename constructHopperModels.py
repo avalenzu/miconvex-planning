@@ -10,13 +10,13 @@ from hopperUtil import *
 desiredPrecision = 2
 N = 20
 tf = 2*1.6
-legLength = 0.16
+legLength = 0.18
 r0 = [0, legLength/2]
 rf = [6*legLength, legLength]
 v0 = [0, 0]
 w0 = 0
 hipOffset = {'front': {'x': 0.5, 'z': -0.25}, 'hind': {'x': -0.5, 'z': -0.25}}
-step_height = legLength/2
+step_height = 0.25*legLength
 platform1_start = -1*legLength
 platform1_end = 1*legLength
 platform1_height = 0*step_height
@@ -47,16 +47,16 @@ hop.addFreeBlock(bottom=platform3_height/legLength, left=platform2_end/legLength
 hop.constructVisualizer()
 m_nlp = hop.constructPyomoModel()
 
-#m_nlp.forceSlacks = Var(m_nlp.feet, m_nlp.R2_INDEX, m_nlp.t, bounds=(0.0, hop.forceMax))
+m_nlp.forceSlacks = Var(m_nlp.feet, m_nlp.R2_INDEX, m_nlp.t, bounds=(0.0, hop.forceMax))
 #m_nlp.hipTorqueSlacks = Var(m_nlp.feet, m_nlp.t, bounds=(0.0, hop.forceMax))
 
-#def _forceSlackRuleUB(m, foot, xz, t):
-    #return m.f[foot, xz, t] <= m.forceSlacks[foot, xz, t]
-#m_nlp.forceSlackUBConstraint = Constraint(m_nlp.feet, m_nlp.R2_INDEX, m_nlp.t, rule=_forceSlackRuleUB)
+def _forceSlackRuleUB(m, foot, xz, t):
+    return m.f[foot, xz, t] <= m.forceSlacks[foot, xz, t]
+m_nlp.forceSlackUBConstraint = Constraint(m_nlp.feet, m_nlp.R2_INDEX, m_nlp.t, rule=_forceSlackRuleUB)
 
-#def _forceSlackRuleLB(m, foot, xz, t):
-    #return m.f[foot, xz, t] >= -m.forceSlacks[foot, xz, t]
-#m_nlp.forceSlackLBConstraint = Constraint(m_nlp.feet, m_nlp.R2_INDEX, m_nlp.t, rule=_forceSlackRuleLB)
+def _forceSlackRuleLB(m, foot, xz, t):
+    return m.f[foot, xz, t] >= -m.forceSlacks[foot, xz, t]
+m_nlp.forceSlackLBConstraint = Constraint(m_nlp.feet, m_nlp.R2_INDEX, m_nlp.t, rule=_forceSlackRuleLB)
 
 def objRule(m):
     #     return sum(m.beta[foot, bv, ti]**2 for foot in m.feet for bv in m.BV_INDEX for ti in m.t)
@@ -121,10 +121,10 @@ m_nlp_orig = m_nlp.clone()
 
 #m_nlp.momentAbountCOM = Constraint(m_nlp.t, rule=_momentRule)
 
-def _hipTorqueRule(m, foot, t):
-    return m.hipTorque[foot, t] == m.p[foot,'x',t]*m.f[foot,'z',t] - m.p[foot,'z',t]*m.f[foot, 'x',t]
+#def _hipTorqueRule(m, foot, t):
+    #return m.hipTorque[foot, t] == m.p[foot,'x',t]*m.f[foot,'z',t] - m.p[foot,'z',t]*m.f[foot, 'x',t]
 
-m_nlp.hipTorqueConstraint = Constraint(m_nlp.feet, m_nlp.t, rule=_hipTorqueRule)
+#m_nlp.hipTorqueConstraint = Constraint(m_nlp.feet, m_nlp.t, rule=_hipTorqueRule)
 
 #def _hipTorqueSlackRuleUB(m, foot, t):
     #return m.hipTorque[foot, t] <= m.hipTorqueSlacks[foot, t]
