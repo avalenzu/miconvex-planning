@@ -16,16 +16,6 @@ rf = [6*legLength, legLength]
 v0 = [0, 0]
 w0 = 0
 hipOffset = {'front': {'x': 0.5, 'z': -0.25}, 'hind': {'x': -0.5, 'z': -0.25}}
-step_height = 0.25*legLength
-platform1_start = -1*legLength
-platform1_end = 1*legLength
-platform1_height = 0*step_height
-platform2_start = 2*legLength
-platform2_end = 4*legLength
-platform2_height = step_height
-platform3_start = 5*legLength
-platform3_end = 7*legLength
-platform3_height = 2*step_height
 
 matlab_hopper = eng.Hopper(legLength, hipOffset)
 hop = Hopper(N, eng, matlab_hopper)
@@ -38,12 +28,8 @@ print 'hop.nOrientationSectors = %d' % hop.nOrientationSectors
 hop.velocityMax = 3.
 hop.positionMax = 1.5*rf[0]/legLength
 hop.forceMax = 3.
-hop.addPlatform(platform1_start/legLength, platform1_end/legLength, platform1_height/legLength, 1)
-hop.addPlatform(platform2_start/legLength, platform2_end/legLength, platform2_height/legLength, 1)
-hop.addPlatform(platform3_start/legLength, platform3_end/legLength, platform3_height/legLength, 1)
-hop.addFreeBlock(bottom=platform1_height/legLength, right=platform2_start/legLength)
-hop.addFreeBlock(bottom=platform2_height/legLength, left=platform1_end/legLength, right=platform3_start/legLength)
-hop.addFreeBlock(bottom=platform3_height/legLength, left=platform2_end/legLength)
+#addThreePlatfomWorld(hop, legLength)
+addFlatWorld(hop, legLength)
 hop.constructVisualizer()
 m_nlp = hop.constructPyomoModel()
 
