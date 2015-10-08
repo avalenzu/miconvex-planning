@@ -29,8 +29,8 @@ print 'hop.nOrientationSectors = %d' % hop.nOrientationSectors
 hop.velocityMax = 3.
 hop.positionMax = 1.5*rf[0]/legLength
 hop.forceMax = 3.
-#addThreePlatfomWorld(hop, legLength)
-addFlatWorld(hop, legLength)
+addThreePlatfomWorld(hop, legLength)
+#addFlatWorld(hop, legLength)
 hop.constructVisualizer()
 m_nlp = hop.constructPyomoModel()
 def normL2(m, var):
@@ -90,9 +90,9 @@ def exprNormLInfinity(m, expr, slackMax):
     return getattr(m, slackName)
 
 
-norm = normL0;
+#norm = normL1;
 #norm = normL2;
-#norm = normLInfinity;
+norm = normLInfinity;
 
 def objRule(m):
     #     return sum(m.beta[foot, bv, ti]**2 for foot in m.feet for bv in m.BV_INDEX for ti in m.t)
@@ -171,22 +171,22 @@ def _hipTorqueRule(m, foot, t):
 m_nlp.hipTorqueConstraint = Constraint(m_nlp.feet, m_nlp.t, rule=_hipTorqueRule)
 
 
-#m_nlp.pwSin.deactivate()
-#m_nlp.pwCos.deactivate()
+m_nlp.pwSin.deactivate()
+m_nlp.pwCos.deactivate()
 
-#def _cos(m, t):
-    #return m.cth[t] == cos(m.th[t])
-#m_nlp.Cos = Constraint(m_nlp.t, rule=_cos)
+def _cos(m, t):
+    return m.cth[t] == cos(m.th[t])
+m_nlp.Cos = Constraint(m_nlp.t, rule=_cos)
 
-#def _sin(m, t):
-    #return m.sth[t] == sin(m.th[t])
-#m_nlp.Sin = Constraint(m_nlp.t, rule=_sin)
+def _sin(m, t):
+    return m.sth[t] == sin(m.th[t])
+m_nlp.Sin = Constraint(m_nlp.t, rule=_sin)
 
 opt_nlp = SolverFactory('ipopt')
 opt_minlp = constructCouenneSolver()
 
 #opt = constructGurobiSolver(mipgap=0.8, MIPFocus=1, TimeLimit=90., Threads=11)
-opt = constructGurobiSolver(TimeLimit=120., Threads=11)
+opt = constructGurobiSolver(mipgap=0.5, TimeLimit=120., Threads=11)
 #opt = constructGurobiSolver(TimeLimit=50., Threads=11)
 
 hop.constructVisualizer()

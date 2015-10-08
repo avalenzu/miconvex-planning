@@ -217,7 +217,12 @@ classdef Hopper < handle
         com_constraint = WorldCoMConstraint(robot, lb, ub);
         min_distance_constraint = MinDistanceConstraint(robot, min_distance);
         ikoptions = IKoptions(robot);
-        [q_nom(:, n), info, infeasible_constraint] = robot.inverseKin(qstar, qstar, foot_constraints{:}, com_constraint,  ikoptions);
+        if n == 1
+          qseed = qstar;
+        else
+          qseed = q_nom(:,n-1);
+        end
+        [q_nom(:, n), info, infeasible_constraint] = robot.inverseKin(qseed, qstar, foot_constraints{:}, com_constraint,  ikoptions);
         assert(info < 10)
       end
       %keyboard
@@ -270,7 +275,9 @@ classdef Hopper < handle
                 FC_perp2 = cross(FC_axis, FC_perp1);
                 FC_edge = bsxfun(@plus, FC_axis, mu*(bsxfun(@times,cos(FC_angles),FC_perp1) + ...
                   bsxfun(@times,sin(FC_angles),FC_perp2)));
-                contact_wrench_struct(end+1).active_knot = setdiff(idx, end_idx);
+                %contact_wrench_struct(end+1).active_knot = setdiff(idx, _idx);
+                %contact_wrench_struct(end+1).active_knot = setdiff(idx, end_idx);
+                contact_wrench_struct(end+1).active_knot = idx;
                 %contact_wrench_struct(end).cw = LinearFrictionConeWrench(robot,foot(i,k).id,zeros(3,1),FC_edge);
                 contact_wrench_struct(end).cw = FrictionConeWrench(robot,foot(i,k).id,zeros(3,1),mu,FC_axis);
               end
@@ -281,6 +288,7 @@ classdef Hopper < handle
 
       options.time_option = 2;
       prog = ComDynamicsFullKinematicsPlanner(robot,N,tf_range,Q_comddot,Qv,Q,q_nom,Q_contact_force,contact_wrench_struct,options);
+      %prog = prog.setCheckGrad(true);
 
       % Add velocity constraints
       max_joint_velocity = 3*pi;
@@ -301,26 +309,26 @@ classdef Hopper < handle
 
       % Add initial conditions
       %prog = prog.addConstraint(ConstantConstraint(qstar(7:end)), prog.q_inds(7:end,1));
-      %prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.H_inds(:,1));
-      %prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.Hdot_inds(:,1));
+      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.H_inds(:,1));
+      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.Hdot_inds(:,1));
       prog = prog.addConstraint(ConstantConstraint(obj.r_data(1,1)), prog.com_inds(1,1));
-      %prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comdot_inds(:,1));
-      %prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comddot_inds(:,1));
+      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comdot_inds(:,1));
+      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comddot_inds(:,1));
       prog = prog.addConstraint(ConstantConstraint(zeros(nq,1)), prog.v_inds(:,1));
 
       % Add final conditions
       %prog = prog.addConstraint(ConstantConstraint(qstar(7:end)), prog.q_inds(7:end,N));
-      %prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.H_inds(:,N));
+      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.H_inds(:,N));
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.Hdot_inds(:,N));
       prog = prog.addConstraint(ConstantConstraint(obj.r_data(1,N)), prog.com_inds(1,N));
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comdot_inds(:,N));
-      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comddot_inds(:,N));
+      %prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comddot_inds(:,N));
       prog = prog.addConstraint(ConstantConstraint(zeros(nq,1)), prog.v_inds(:,N));
 
       % Add constraints on base
-      tol = 0.5;
-      %prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(1,:)-tol, obj.r_data(1,:)+tol), prog.com_inds(1,:));
-      %prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(2,:)-tol, obj.r_data(2,:)+tol), prog.com_inds(3,:));
+      tol = 0.01;
+      prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(1,:)-tol, obj.r_data(1,:)+tol), prog.com_inds(1,:));
+      prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(2,:)-tol, obj.r_data(2,:)+tol), prog.com_inds(3,:));
       %prog = prog.addConstraint(BoundingBoxConstraint(obj.k_data-tol, obj.k_data+tol), prog.H_inds(2,:));
       prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(2,:));
       prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(4,:));
