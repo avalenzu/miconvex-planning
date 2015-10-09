@@ -238,8 +238,9 @@ class Hopper:
             if t == self.N:
                 return Constraint.Skip
             else:
-                v_mid = m.v[i,t] + m.dt[t]/2*m.F[i,t]
-                return m.r[i,t+1] == m.r[i, t] + m.dt[t]*v_mid
+                return m.r[i,t+1] == m.r[i, t] + m.dt[t]*m.v[i, t + 1]
+                #v_mid = m.v[i,t] + m.dt[t]/2*m.F[i,t]
+                #return m.r[i,t+1] == m.r[i, t] + m.dt[t]*v_mid
         model.positionConstraint = Constraint(model.R2_INDEX, model.t, rule=_positionRule)
 
         def _footPositionDefinition(m, foot, i, t):
@@ -250,7 +251,7 @@ class Hopper:
             if t == self.N:
                 return Constraint.Skip
             else:
-                return m.foot[foot, i, t+1] == m.foot[foot, i, t] + m.dt[t]*m.pd[foot, i, t]
+                return m.foot[foot, i, t+1] == m.foot[foot, i, t] + m.dt[t]*m.pd[foot, i, t+1]
         model.footPositionConstraint = Constraint(model.feet, model.R2_INDEX, model.t, rule=_footPositionRule)
 
         def _footRelativeToCOMDefinition(m, foot, xz, t):
@@ -279,8 +280,9 @@ class Hopper:
             if t == self.N:
                 return Constraint.Skip
             else:
-                v_mid = m.v[i,t] + m.dt[t]/2*m.F[i,t]
-                return m.v[i,t+1] == v_mid + m.dt[t]/2*m.F[i,t+1]
+                return m.v[i,t+1] == m.v[i,t] + m.dt[t]/2*(m.F[i,t] + m.F[i,t+1])
+                #v_mid = m.v[i,t] + m.dt[t]/2*m.F[i,t]
+                #return m.v[i,t+1] == v_mid + m.dt[t]/2*m.F[i,t+1]
 
         model.velocityConstraint = Constraint(model.R2_INDEX, model.t, rule=_velocityRule)
 
@@ -288,8 +290,9 @@ class Hopper:
             if t == self.N:
                 return Constraint.Skip
             else:
-                w_mid = m.w[t] + m.dt[t]/(2*self.momentOfInertia)*m.T[t]
-                return m.w[t+1] == w_mid + m.dt[t]/(2*self.momentOfInertia)*m.T[t+1]
+                return m.w[t+1] == m.w[t] + m.dt[t]/(2*self.momentOfInertia)*(m.T[t] + m.T[t+1])
+                #w_mid = m.w[t] + m.dt[t]/(2*self.momentOfInertia)*m.T[t]
+                #return m.w[t+1] == w_mid + m.dt[t]/(2*self.momentOfInertia)*m.T[t+1]
 
         model.angularVelocityConstraint = Constraint(model.t, rule=_angularVelocityRule)
 
@@ -297,8 +300,9 @@ class Hopper:
             if t == self.N:
                 return Constraint.Skip
             else:
-                w_mid = m.w[t] + m.dt[t]/(2*self.momentOfInertia)*m.T[t]
-                return m.th[t+1] == m.th[t] + m.dt[t]*w_mid
+                return m.th[t+1] == m.th[t] + m.dt[t]*m.w[t+1]
+                #w_mid = m.w[t] + m.dt[t]/(2*self.momentOfInertia)*m.T[t]
+                #return m.th[t+1] == m.th[t] + m.dt[t]*w_mid
 
         model.orientationConstraint = Constraint(model.t, rule=_orientationRule)
 

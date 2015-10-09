@@ -75,8 +75,7 @@ def unfixIntegerVariables(m):
             #print 'Fixing %s to %s' % (ComponentUID(var), var.value)
             var.fixed = False
 
-def addThreePlatfomWorld(hop, legLength):
-    step_height = 0.25*legLength
+def addThreePlatfomWorld(hop, legLength, step_height):
     step_length = 2.0*legLength
     gap_length = 0.65*step_length
     platform1_start = -1*legLength

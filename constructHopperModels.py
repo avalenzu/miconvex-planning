@@ -13,7 +13,7 @@ N = 25
 tf = 2*1.6
 legLength = 0.16
 r0 = [0, legLength/2]
-rf = [6*legLength, legLength]
+rf = [1.0, legLength]
 v0 = [0, 0]
 w0 = 0
 hipOffset = {'front': {'x': 0.5, 'z': -0.25}, 'hind': {'x': -0.5, 'z': -0.25}}
@@ -29,7 +29,7 @@ print 'hop.nOrientationSectors = %d' % hop.nOrientationSectors
 hop.velocityMax = 3.
 hop.positionMax = 1.5*rf[0]/legLength
 hop.forceMax = 3.
-addThreePlatfomWorld(hop, legLength)
+addThreePlatfomWorld(hop, legLength, 0.25*legLength)
 #addFlatWorld(hop, legLength)
 hop.constructVisualizer()
 m_nlp = hop.constructPyomoModel()
