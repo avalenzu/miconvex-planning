@@ -178,7 +178,7 @@ class Hopper:
         model.F = Var(model.R2_INDEX, model.t, bounds=(-self.forceMax, self.forceMax))
         model.f = Var(model.feet, model.R2_INDEX, model.t, bounds=(-self.forceMax, self.forceMax))
         model.hipTorque = Var(model.feet, model.t, bounds=(-self.forceMax, self.forceMax))
-        #model.beta = Var(model.feet, model.BV_INDEX, model.t, within=NonNegativeReals, bounds=(0, self.forceMax))
+        model.beta = Var(model.feet, model.BV_INDEX, model.t, within=NonNegativeReals, bounds=(0, self.forceMax))
         model.T = Var(model.t, bounds=(-self.forceMax, self.forceMax))
         lb = {'x': -0.5, 'z': -1}
         ub = {'x':  0.5, 'z': -0.85}
@@ -343,17 +343,17 @@ class Hopper:
             def _contactForceConstraint(disjunctData, xz):
                 m = disjunctData.model()
                 return m.f[foot, xz, t] == sum(m.beta[foot, bv, t]*m.basisVectors[region, bv, xz] for bv in m.BV_INDEX)
-            #disjunct.contactForceConstraint = Constraint(m.R2_INDEX, rule=_contactForceConstraint)
+            disjunct.contactForceConstraint = Constraint(m.R2_INDEX, rule=_contactForceConstraint)
 
-            disjunct.contactForceConstraint1 = Constraint(expr=m.f[foot, 'x', t] <= self.regions[region]['mu']*m.f[foot, 'z', t])
-            disjunct.contactForceConstraint2 = Constraint(expr=m.f[foot, 'x', t] >= -self.regions[region]['mu']*m.f[foot, 'z', t])
-            def _contactForceConstraint3(disjunctData, xz):
-                m = disjunctData.model()
-                if self.regions[region]['mu'] == 0.:
-                    return m.f[foot, xz, t] == 0
-                else:
-                    return Constraint.Skip
-            disjunct.contactForceConstraint3 = Constraint(m.R2_INDEX, rule=_contactForceConstraint3)
+            #disjunct.contactForceConstraint1 = Constraint(expr=m.f[foot, 'x', t] <= self.regions[region]['mu']*m.f[foot, 'z', t])
+            #disjunct.contactForceConstraint2 = Constraint(expr=m.f[foot, 'x', t] >= -self.regions[region]['mu']*m.f[foot, 'z', t])
+            #def _contactForceConstraint3(disjunctData, xz):
+                #m = disjunctData.model()
+                #if self.regions[region]['mu'] == 0.:
+                    #return m.f[foot, xz, t] == 0
+                #else:
+                    #return Constraint.Skip
+            #disjunct.contactForceConstraint3 = Constraint(m.R2_INDEX, rule=_contactForceConstraint3)
 
 
             def _stationaryFootConstraint(disjunctData, xz):
