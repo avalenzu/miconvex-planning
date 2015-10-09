@@ -142,11 +142,11 @@ classdef Hopper < handle
       end
     end
 
-    function addPlatform(obj, platform_start, platform_end, platform_height)
+    function addPlatform(obj, platform_start, platform_end, platform_height, platform_left, platform_right)
       platform.start = platform_start*obj.leg_length;
       platform.end = platform_end*obj.leg_length;
       platform.height = platform_height*obj.leg_length;
-      platform.geom = RigidBodyBox([platform.end-platform.start; 1; 0.1], [(platform.end+platform.start)/2; 0; platform.height-0.05], [0; 0; 0]);
+      platform.geom = RigidBodyBox([platform.end-platform.start; platform_left - platform_right; 0.1], [(platform.end+platform.start)/2; 0.5*(platform_left+platform_right); platform.height-0.05], [0; 0; 0]);
       obj.platforms(end + 1) = platform;
       obj.rbm_vis = obj.rbm_vis.addVisualGeometryToBody(1, platform.geom);
       obj.rbm_vis = obj.rbm_vis.compile();

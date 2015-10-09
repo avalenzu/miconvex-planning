@@ -45,12 +45,12 @@ class Hopper:
         self.hipOffset = self.eng.getHipInBody(self.matlabHopper)
         self.footnames = self.hipOffset.keys()
 
-    def addPlatform(self, platform_start, platform_end, platform_height, mu):
+    def addPlatform(self, platform_start, platform_end, platform_height, mu, platform_left, platform_right):
         self.addRegion(A=np.matrix('-1., 0.,; 1., 0.'),
                        b=np.matrix('%f; %f' % (-(platform_start+0.1), platform_end-0.1)),
                        Aeq=np.array([0., 1.]), beq=platform_height, normal=np.matrix('0.; 1.'),
                        mu=mu)
-        self.eng.addPlatform(self.matlabHopper, platform_start, platform_end, platform_height, nargout=0)
+        self.eng.addPlatform(self.matlabHopper, platform_start, platform_end, platform_height, platform_left, platform_right, nargout=0)
 
     def addFreeBlock(self, left=None, right=None, top=None, bottom=None):
         Arows = []
