@@ -111,7 +111,8 @@ def objRule(m):
                         current_indicator = getattr(m, 'footRegionConstraints[%d,%s,%d]indicator_var' % (region, foot, t));
                         next_indicator = getattr(m, 'footRegionConstraints[%d,%s,%d]indicator_var' % (region, foot, t+1));
                         footRegionChanges += exprNormLInfinity(m, next_indicator - current_indicator, 1.0)
-    return footRegionChanges + norm(m, m.f) + norm(m, m.hipTorque)
+    #return footRegionChanges + norm(m, m.pd) + norm(m, m.f) + norm(m, m.hipTorque)
+    return 1e1*footRegionChanges + norm(m, m.pdd) + norm(m, m.beta) + norm(m, m.hipTorque)
 
 m_nlp.Obj = Objective(rule=objRule, sense=minimize)
 
