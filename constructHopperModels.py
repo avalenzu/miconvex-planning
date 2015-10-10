@@ -91,8 +91,8 @@ def exprNormLInfinity(m, expr, slackMax):
 
 
 #norm = normL1;
-#norm = normL2;
-norm = normLInfinity;
+norm = normL2;
+#norm = normLInfinity;
 
 def objRule(m):
     #     return sum(m.beta[foot, bv, ti]**2 for foot in m.feet for bv in m.BV_INDEX for ti in m.t)
