@@ -296,16 +296,16 @@ classdef Hopper < handle
       %prog = prog.setCheckGrad(true);
 
       % Add velocity constraints
-      max_joint_velocity = 3*pi;
+      max_joint_velocity = 10*pi;
       lb = -max_joint_velocity*ones(nq-6, N);
       ub = max_joint_velocity*ones(nq-6, N);
-      %prog = prog.addConstraint(BoundingBoxConstraint(lb, ub), prog.v_inds(7:end, :));
+      prog = prog.addConstraint(BoundingBoxConstraint(lb, ub), prog.v_inds(7:end, :));
 
       % Add collision avoidance
       prog = prog.addRigidBodyConstraint(MinDistanceConstraint(robot, min_distance),1:N);
 
       % Add Timestep bounds
-      h_min = 0.1*dt_range(1); h_max = dt_range(2);
+      h_min = 0.5*dt_range(1); h_max = 2*dt_range(2);
       prog = prog.addBoundingBoxConstraint(BoundingBoxConstraint(h_min*ones(N-1,1),h_max*ones(N-1,1)),prog.h_inds(:));
       %prog = prog.addConstraint(ConstantConstraint(dt), prog.h_inds(:));
       prog = prog.addCost(QuadraticConstraint(-Inf, Inf, eye(numel(prog.h_inds)), zeros(numel(prog.h_inds),1)), prog.h_inds(:));
