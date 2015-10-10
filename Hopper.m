@@ -227,7 +227,7 @@ classdef Hopper < handle
         else
           qseed = q_nom(:,n-1);
         end
-        [q_nom(:, n), info, infeasible_constraint] = robot.inverseKin(qseed, qstar, foot_constraints{:}, com_constraint,  ikoptions);
+        [q_nom(:, n), info, infeasible_constraint] = robot.inverseKin(qseed, qstar, foot_constraints{:}, min_distance_constraint, com_constraint,  ikoptions);
         assert(info < 10)
       end
       %keyboard
@@ -247,7 +247,7 @@ classdef Hopper < handle
       state_cost.back_left_hip_roll = 5;
       state_cost.back_right_hip_roll = 5;
       state_cost = double(state_cost);
-      Q = 1e2*diag(state_cost(1:nq)); 
+      Q = 1e3*diag(state_cost(1:nq)); 
       state_cost(nq+1:nq+6) = 0;
       Qv = 1e3*diag(state_cost(nq+1:end));
       Q_comddot = diag([1,1,1]);
@@ -305,9 +305,10 @@ classdef Hopper < handle
       prog = prog.addRigidBodyConstraint(MinDistanceConstraint(robot, min_distance),1:N);
 
       % Add Timestep bounds
-      h_min = dt_range(1); h_max = dt_range(2);
+      h_min = 0.1*dt_range(1); h_max = dt_range(2);
       prog = prog.addBoundingBoxConstraint(BoundingBoxConstraint(h_min*ones(N-1,1),h_max*ones(N-1,1)),prog.h_inds(:));
       %prog = prog.addConstraint(ConstantConstraint(dt), prog.h_inds(:));
+      prog = prog.addCost(QuadraticConstraint(-Inf, Inf, eye(numel(prog.h_inds)), zeros(numel(prog.h_inds),1)), prog.h_inds(:));
 
       % Add symmetry constraints
       prog = prog.addConstraint(obj.symmetryConstraint(obj.littleDog, 1:N), prog.q_inds(:));
@@ -331,9 +332,9 @@ classdef Hopper < handle
       prog = prog.addConstraint(ConstantConstraint(zeros(nq,1)), prog.v_inds(:,N));
 
       % Add constraints on base
-      tol = 0.01;
-      prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(1,:)-tol, obj.r_data(1,:)+tol), prog.com_inds(1,:));
-      prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(2,:)-tol, obj.r_data(2,:)+tol), prog.com_inds(3,:));
+      tol = 0.5;
+      %prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(1,:)-tol, obj.r_data(1,:)+tol), prog.com_inds(1,:));
+      %prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(2,:)-tol, obj.r_data(2,:)+tol), prog.com_inds(3,:));
       %prog = prog.addConstraint(BoundingBoxConstraint(obj.k_data-tol, obj.k_data+tol), prog.H_inds(2,:));
       prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(2,:));
       prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(4,:));
@@ -428,8 +429,10 @@ classdef Hopper < handle
       v_seed = gradient(q_seed);
       com_seed = zeros(3, N);
       com_seed([1, 3], :) = obj.r_data;
-      comdot_seed = gradient(com_seed);
-      comddot_seed = gradient(comdot_seed);
+      comdot_seed = zeros(3, N);
+      comdot_seed([1, 3], :) = obj.v_data;
+      comddot_seed = zeros(3, N);
+      comddot_seed([1, 3], :) = (1/obj.littleDog.getMass())*obj.F_data;
       I = obj.getDimensionlessMomentOfInertia()*obj.littleDog.getMass()*obj.leg_length^2;
       H_seed = zeros(3, N);
       H_seed(2,:) = obj.k_data;
@@ -452,12 +455,14 @@ classdef Hopper < handle
       end
 
       % Set up solver options
+      %prog = prog.setSolver('ipopt');
       prog = prog.setSolverOptions('snopt','iterationslimit',1e6);
       prog = prog.setSolverOptions('snopt','majoriterationslimit', options.major_iteration_limit);
       prog = prog.setSolverOptions('snopt','majorfeasibilitytolerance',5e-6);
       prog = prog.setSolverOptions('snopt','majoroptimalitytolerance',6e-4);
       prog = prog.setSolverOptions('snopt','superbasicslimit',2000);
-      prog = prog.setSolverOptions('snopt','linesearchtolerance',0.9);
+      prog = prog.setSolverOptions('snopt','linesearchtolerance',0.99);
+      prog = prog.setSolverOptions('snopt','scaleoption',1);
       prog = prog.setSolverOptions('snopt','print','snopt.out');
 
       % Solve trajectory optimization

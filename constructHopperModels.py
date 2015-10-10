@@ -154,8 +154,8 @@ def _periodicFootPosition(m, foot, xz):
 
 #m_nlp.periodicFootPosition = Constraint(m_nlp.feet, m_nlp.R2_INDEX, rule=_periodicFootPosition)
 
-m = constructMDTModel(m_nlp, desiredPrecision)
-#m = constructRelaxedModel(m_nlp)
+#m = constructMDTModel(m_nlp, desiredPrecision)
+m = constructRelaxedModel(m_nlp)
 #for z_data in m.z.values():
     #z_data._component().branchPriority = 1
 m_nlp_orig = m_nlp.clone()
@@ -169,7 +169,7 @@ m_nlp_orig = m_nlp.clone()
 def _hipTorqueRule(m, foot, t):
     return m.hipTorque[foot, t] == m.p[foot,'x',t]*m.f[foot,'z',t] - m.p[foot,'z',t]*m.f[foot, 'x',t]
 
-m_nlp.hipTorqueConstraint = Constraint(m_nlp.feet, m_nlp.t, rule=_hipTorqueRule)
+#m_nlp.hipTorqueConstraint = Constraint(m_nlp.feet, m_nlp.t, rule=_hipTorqueRule)
 
 
 m_nlp.pwSin.deactivate()

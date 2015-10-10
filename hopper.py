@@ -223,7 +223,8 @@ class Hopper:
         model.pwSin = Piecewise(model.t, model.sth, model.th, pw_pts=bpts, pw_constr_type='EQ', pw_repn='CC', f_rule=_sin)
 
         def _momentRule(m, t):
-            return m.T[t] == sum(m.footRelativeToCOM[foot,'x',t]*m.f[foot,'z',t] - m.footRelativeToCOM[foot,'z',t]*m.f[foot, 'x',t] for foot in m.feet)
+            return m.T[t] == -sum(m.footRelativeToCOM[foot,'x',t]*m.f[foot,'z',t] - m.footRelativeToCOM[foot,'z',t]*m.f[foot, 'x',t] for foot in m.feet)
+            #return m.T[t] == sum(m.footRelativeToCOM[foot,'x',t]*m.f[foot,'z',t] - m.footRelativeToCOM[foot,'z',t]*m.f[foot, 'x',t] for foot in m.feet)
 
         model.momentAbountCOM = Constraint(model.t, rule=_momentRule)
 
@@ -281,14 +282,16 @@ class Hopper:
             if t == self.N:
                 return Constraint.Skip
             else:
-                return m.pd[foot, xz, t + 1] == m.pd[foot, xz, t] + 0.5*m.dt[t]*(m.pdd[foot, xz, t] + m.pdd[foot, xz, t + 1])
+                return m.pd[foot, xz, t + 1] == m.pd[foot, xz, t] + m.dt[t]*m.pdd[foot, xz, t+1]
+                #return m.pd[foot, xz, t + 1] == m.pd[foot, xz, t] + 0.5*m.dt[t]*(m.pdd[foot, xz, t] + m.pdd[foot, xz, t + 1])
         model.footVelocityConstraint = Constraint(model.feet, model.R2_INDEX, model.t, rule=_footVelocityRule)
 
         def _velocityRule(m, i, t):
             if t == self.N:
                 return Constraint.Skip
             else:
-                return m.v[i,t+1] == m.v[i,t] + m.dt[t]/2*(m.F[i,t] + m.F[i,t+1])
+                return m.v[i,t+1] == m.v[i,t] + m.dt[t]*m.F[i,t+1]
+                #return m.v[i,t+1] == m.v[i,t] + m.dt[t]/2*(m.F[i,t] + m.F[i,t+1])
                 #v_mid = m.v[i,t] + m.dt[t]/2*m.F[i,t]
                 #return m.v[i,t+1] == v_mid + m.dt[t]/2*m.F[i,t+1]
 
@@ -298,7 +301,7 @@ class Hopper:
             if t == self.N:
                 return Constraint.Skip
             else:
-                return m.w[t+1] == m.w[t] + m.dt[t]/(2*self.momentOfInertia)*(m.T[t] + m.T[t+1])
+                return m.w[t+1] == m.w[t] + m.dt[t]/(self.momentOfInertia)*m.T[t+1]
                 #w_mid = m.w[t] + m.dt[t]/(2*self.momentOfInertia)*m.T[t]
                 #return m.w[t+1] == w_mid + m.dt[t]/(2*self.momentOfInertia)*m.T[t+1]
 
