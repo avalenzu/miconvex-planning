@@ -98,6 +98,12 @@ class Hopper:
     def extractPostition(self, m):
         return np.vstack([np.array([m.r[xz, ti].value for ti in m.t]) for xz in m.R2_INDEX])
 
+    def extractVelocity(self, m):
+        return np.vstack([np.array([m.v[xz, ti].value for ti in m.t]) for xz in m.R2_INDEX])
+
+    def extractTotalForce(self, m):
+        return np.vstack([np.array([m.F[xz, ti].value for ti in m.t]) for xz in m.R2_INDEX])
+
     def extractOrientation(self, m):
         return np.atleast_2d(np.array([m.th[ti].value for ti in m.t]))
 
@@ -132,6 +138,8 @@ class Hopper:
         data = dict()
         data['t'] =                 matlab.double(self.extractTime(m).tolist())
         data['r'] =                 matlab.double(self.extractPostition(m).tolist())
+        data['v'] =                 matlab.double(self.extractVelocity(m).tolist())
+        data['F'] =                 matlab.double(self.extractTotalForce(m).tolist())
         data['th'] =                matlab.double(self.extractOrientation(m).tolist())
         data['r_hip'] =             matlab.double(self.extractHipPosition(m).tolist())
         data['p'] =                 matlab.double(self.extractRelativeFootPosition(m).tolist())

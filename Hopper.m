@@ -12,6 +12,8 @@ classdef Hopper < handle
     v
     t_data     
     r_data     
+    v_data     
+    F_data     
     r_hip_data 
     p_data     
     f_data     
@@ -82,8 +84,11 @@ classdef Hopper < handle
     end
 
     function loadResults(obj, data)
+      m = obj.littleDog.getMass();
       obj.t_data          = sqrt(obj.leg_length/9.81)*data.t;
       obj.r_data          = obj.leg_length*data.r;
+      obj.v_data          = obj.leg_length/sqrt(obj.leg_length/9.81)*data.v;
+      obj.F_data          = m*9.81*data.F;
       obj.r_hip_data      = obj.leg_length*data.r_hip;
       obj.p_data          = obj.leg_length*data.p;
       obj.f_data          = data.f;%*obj.littleDog.getMass()*9.81;
