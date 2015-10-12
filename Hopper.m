@@ -169,8 +169,9 @@ classdef Hopper < handle
       end
     end
 
-    function [sol, prog] = solveCDFKP(obj, options)
-      if nargin < 2 || isempty(options), options = struct(); end
+    function [sol, prog] = solveCDFKP(obj, seed, options)
+      if nargin < 3 || isempty(options), options = struct(); end
+      if nargin < 2, seed = []; end
       options = obj.parseOptionsStruct(options); 
       assert(~isempty(obj.r_data), 'You must load data first!');
       robot = obj.littleDog;
@@ -220,6 +221,8 @@ classdef Hopper < handle
         lb([1,3]) = obj.r_data(:, n);
         ub = lb;
         com_constraint = WorldCoMConstraint(robot, lb, ub);
+        posture_constraint = PostureConstraint(robot);
+        posture_constraint = posture_constraint.setJointLimits([2;4;5;6], [0; 0; -pi/8; 0], [0; 0; pi/8; 0]);
         min_distance_constraint = MinDistanceConstraint(robot, min_distance);
         ikoptions = IKoptions(robot);
         if n == 1
@@ -227,7 +230,7 @@ classdef Hopper < handle
         else
           qseed = q_nom(:,n-1);
         end
-        [q_nom(:, n), info, infeasible_constraint] = robot.inverseKin(qseed, qstar, foot_constraints{:}, min_distance_constraint, com_constraint,  ikoptions);
+        [q_nom(:, n), info, infeasible_constraint] = robot.inverseKin(qseed, qstar, foot_constraints{:}, min_distance_constraint, com_constraint, posture_constraint,  ikoptions);
         assert(info < 10)
       end
       %keyboard
@@ -296,7 +299,7 @@ classdef Hopper < handle
       %prog = prog.setCheckGrad(true);
 
       % Add velocity constraints
-      max_joint_velocity = 10*pi;
+      max_joint_velocity = 3*pi;
       lb = -max_joint_velocity*ones(nq-6, N);
       ub = max_joint_velocity*ones(nq-6, N);
       prog = prog.addConstraint(BoundingBoxConstraint(lb, ub), prog.v_inds(7:end, :));
@@ -311,10 +314,10 @@ classdef Hopper < handle
       prog = prog.addCost(QuadraticConstraint(-Inf, Inf, eye(numel(prog.h_inds)), zeros(numel(prog.h_inds),1)), prog.h_inds(:));
 
       % Add symmetry constraints
-      prog = prog.addConstraint(obj.symmetryConstraint(obj.littleDog, 1:N), prog.q_inds(:));
+      %prog = prog.addConstraint(obj.symmetryConstraint(obj.littleDog, 2:N), prog.q_inds(:,2:end));
 
       % Add initial conditions
-      %prog = prog.addConstraint(ConstantConstraint(qstar(7:end)), prog.q_inds(7:end,1));
+      prog = prog.addConstraint(ConstantConstraint(q_nom(:,1)), prog.q_inds(:,1));
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.H_inds(:,1));
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.Hdot_inds(:,1));
       prog = prog.addConstraint(ConstantConstraint(obj.r_data(1,1)), prog.com_inds(1,1));
@@ -347,7 +350,7 @@ classdef Hopper < handle
         for k = 1:2
           foot_position_fcn{i, k} = drakeFunction.kinematic.WorldPosition(robot, foot(i,k).id);
           for n = 1:N
-            tol = 0*sqrt(eps);
+            tol = 1e-3;
             lb = -tol*ones(2,1);
             ub = tol*ones(2,1);
             if k == 1
@@ -394,7 +397,7 @@ classdef Hopper < handle
               constraint = DrakeFunctionConstraint(lb, ub, region_fcn(foot_position_fcn{i,k}));
               for time_index = reshape(idx, 1, [])
                 cnstr_inds = prog.q_inds(:,time_index);
-                %prog = prog.addConstraint(constraint,cnstr_inds);
+                prog = prog.addConstraint(constraint,cnstr_inds);
               end
               if obj.regions(j).mu > 0
                 % stance feet stationary constraints
@@ -422,36 +425,40 @@ classdef Hopper < handle
       end
 
       % Set up seed
-      x_seed = zeros(prog.num_vars,1);
-      q_seed = q_nom;
-      %q_seed([1, 3], :) = obj.r_data;
-      %q_seed(5, :) = obj.th_data;
-      v_seed = gradient(q_seed);
-      com_seed = zeros(3, N);
-      com_seed([1, 3], :) = obj.r_data;
-      comdot_seed = zeros(3, N);
-      comdot_seed([1, 3], :) = obj.v_data;
-      comddot_seed = zeros(3, N);
-      comddot_seed([1, 3], :) = (1/obj.littleDog.getMass())*obj.F_data;
-      I = obj.getDimensionlessMomentOfInertia()*obj.littleDog.getMass()*obj.leg_length^2;
-      H_seed = zeros(3, N);
-      H_seed(2,:) = obj.k_data;
-      Hdot_seed = gradient(H_seed);
-      x_seed(prog.H_inds(:)) = reshape(H_seed,[],1);
-      x_seed(prog.Hdot_inds(:)) = reshape(Hdot_seed,[],1);
-      x_seed(prog.h_inds) = dt;
-      x_seed(prog.q_inds(:)) = reshape(q_seed,[],1);
-      x_seed(prog.v_inds(:)) = reshape(v_seed,[],1);
-      x_seed(prog.com_inds(:)) = reshape(com_seed,[],1);
-      x_seed(prog.comdot_inds(:)) = reshape(comdot_seed,[],1);
-      x_seed(prog.comddot_inds(:)) = reshape(comddot_seed,[],1);
-      for i = 1:2
-        for j = 1:2
-          f_seed = zeros(3, N);
-          f_seed([1, 3], :) = obj.f_data(:, :, i);
-          x_seed(prog.lambda_inds{2*(i-1) + j}(:)) = 0.5*f_seed;
-          %prog = prog.addCost(QuadraticConstraint(-Inf, Inf, eye(numel(f_seed)), -2*f_seed(:)), prog.lambda_inds{2*(i-1) + j}(:));
+      if isempty(seed)
+        x_seed = zeros(prog.num_vars,1);
+        q_seed = q_nom;
+        %q_seed([1, 3], :) = obj.r_data;
+        %q_seed(5, :) = obj.th_data;
+        v_seed = gradient(q_seed);
+        com_seed = zeros(3, N);
+        com_seed([1, 3], :) = obj.r_data;
+        comdot_seed = zeros(3, N);
+        comdot_seed([1, 3], :) = obj.v_data;
+        comddot_seed = zeros(3, N);
+        comddot_seed([1, 3], :) = (1/obj.littleDog.getMass())*obj.F_data;
+        I = obj.getDimensionlessMomentOfInertia()*obj.littleDog.getMass()*obj.leg_length^2;
+        H_seed = zeros(3, N);
+        H_seed(2,:) = obj.k_data;
+        Hdot_seed = gradient(H_seed);
+        x_seed(prog.H_inds(:)) = reshape(H_seed,[],1);
+        x_seed(prog.Hdot_inds(:)) = reshape(Hdot_seed,[],1);
+        x_seed(prog.h_inds) = dt;
+        x_seed(prog.q_inds(:)) = reshape(q_seed,[],1);
+        x_seed(prog.v_inds(:)) = reshape(v_seed,[],1);
+        x_seed(prog.com_inds(:)) = reshape(com_seed,[],1);
+        x_seed(prog.comdot_inds(:)) = reshape(comdot_seed,[],1);
+        x_seed(prog.comddot_inds(:)) = reshape(comddot_seed,[],1);
+        for i = 1:2
+          for j = 1:2
+            f_seed = zeros(3, N);
+            f_seed([1, 3], :) = obj.f_data(:, :, i);
+            x_seed(prog.lambda_inds{2*(i-1) + j}(:)) = 0.5*f_seed;
+            %prog = prog.addCost(QuadraticConstraint(-Inf, Inf, eye(numel(f_seed)), -2*f_seed(:)), prog.lambda_inds{2*(i-1) + j}(:));
+          end
         end
+      else
+        x_seed = seed.x_sol;
       end
 
       % Set up solver options
@@ -463,6 +470,7 @@ classdef Hopper < handle
       prog = prog.setSolverOptions('snopt','superbasicslimit',2000);
       prog = prog.setSolverOptions('snopt','linesearchtolerance',0.99);
       prog = prog.setSolverOptions('snopt','scaleoption',1);
+      %prog = prog.setSolverOptions('snopt','sense','Feasible point');
       prog = prog.setSolverOptions('snopt','print','snopt.out');
 
       % Solve trajectory optimization
