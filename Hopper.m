@@ -176,7 +176,7 @@ classdef Hopper < handle
       assert(~isempty(obj.r_data), 'You must load data first!');
       robot = obj.littleDog;
       nq = robot.getNumPositions();
-      min_distance = 0.03;
+      min_distance = 0.01;
       foot = struct('id',[],'in_stance',[]);
       foot(1,1).id = robot.findFrameId('front_left_foot_center');
       foot(1,2).id = robot.findFrameId('front_right_foot_center'); 
@@ -219,10 +219,12 @@ classdef Hopper < handle
         end
         lb = zeros(3, 1);
         lb([1,3]) = obj.r_data(:, n);
+        lb(2) = NaN;
         ub = lb;
         com_constraint = WorldCoMConstraint(robot, lb, ub);
+        hip_inds = robot.findPositionIndices('hip_roll');
         posture_constraint = PostureConstraint(robot);
-        posture_constraint = posture_constraint.setJointLimits([2;4;5;6], [0; 0; -pi/8; 0], [0; 0; pi/8; 0]);
+        posture_constraint = posture_constraint.setJointLimits([2;4;5;6;hip_inds], [0; 0; -pi/8; 0; zeros(size(hip_inds))], [0; 0; pi/8; 0; zeros(size(hip_inds))]);
         min_distance_constraint = MinDistanceConstraint(robot, min_distance);
         ikoptions = IKoptions(robot);
         if n == 1
@@ -315,9 +317,16 @@ classdef Hopper < handle
 
       % Add symmetry constraints
       %prog = prog.addConstraint(obj.symmetryConstraint(obj.littleDog, 2:N), prog.q_inds(:,2:end));
+      %
+      % Constrain hip roll
+      posture_constraint = PostureConstraint(robot);
+      hip_inds = robot.findPositionIndices('hip_roll');
+      posture_constraint = posture_constraint.setJointLimits(hip_inds, zeros(size(hip_inds)), zeros(size(hip_inds)));
+      prog = prog.addRigidBodyConstraint(posture_constraint, 1:N);
+
 
       % Add initial conditions
-      prog = prog.addConstraint(ConstantConstraint(q_nom(:,1)), prog.q_inds(:,1));
+      %prog = prog.addConstraint(ConstantConstraint(q_nom(:,1)), prog.q_inds(:,1));
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.H_inds(:,1));
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.Hdot_inds(:,1));
       prog = prog.addConstraint(ConstantConstraint(obj.r_data(1,1)), prog.com_inds(1,1));
@@ -350,7 +359,7 @@ classdef Hopper < handle
         for k = 1:2
           foot_position_fcn{i, k} = drakeFunction.kinematic.WorldPosition(robot, foot(i,k).id);
           for n = 1:N
-            tol = 1e-3;
+            tol = 1e-2;
             lb = -tol*ones(2,1);
             ub = tol*ones(2,1);
             if k == 1
