@@ -474,7 +474,7 @@ classdef Hopper < handle
       %prog = prog.setSolver('ipopt');
       prog = prog.setSolverOptions('snopt','iterationslimit',1e6);
       prog = prog.setSolverOptions('snopt','majoriterationslimit', options.major_iteration_limit);
-      prog = prog.setSolverOptions('snopt','majorfeasibilitytolerance',5e-6);
+      prog = prog.setSolverOptions('snopt','majorfeasibilitytolerance',1e-5);
       prog = prog.setSolverOptions('snopt','majoroptimalitytolerance',6e-4);
       prog = prog.setSolverOptions('snopt','superbasicslimit',2000);
       prog = prog.setSolverOptions('snopt','linesearchtolerance',0.99);
