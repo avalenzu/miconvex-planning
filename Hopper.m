@@ -316,7 +316,7 @@ classdef Hopper < handle
       prog = prog.addCost(QuadraticConstraint(-Inf, Inf, eye(numel(prog.h_inds)), zeros(numel(prog.h_inds),1)), prog.h_inds(:));
 
       % Add symmetry constraints
-      %prog = prog.addConstraint(obj.symmetryConstraint(obj.littleDog, 2:N), prog.q_inds(:,2:end));
+      prog = prog.addConstraint(obj.symmetryConstraint(obj.littleDog, 2:N), prog.q_inds(:,2:end));
       %
       % Constrain hip roll
       posture_constraint = PostureConstraint(robot);
@@ -331,7 +331,7 @@ classdef Hopper < handle
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.Hdot_inds(:,1));
       prog = prog.addConstraint(ConstantConstraint(obj.r_data(1,1)), prog.com_inds(1,1));
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comdot_inds(:,1));
-      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comddot_inds(:,1));
+      %prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comddot_inds(:,1));
       prog = prog.addConstraint(ConstantConstraint(zeros(nq,1)), prog.v_inds(:,1));
 
       % Add final conditions
@@ -340,7 +340,7 @@ classdef Hopper < handle
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.Hdot_inds(:,N));
       prog = prog.addConstraint(ConstantConstraint(obj.r_data(1,N)), prog.com_inds(1,N));
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comdot_inds(:,N));
-      prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comddot_inds(:,N));
+      %prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.comddot_inds(:,N));
       prog = prog.addConstraint(ConstantConstraint(zeros(nq,1)), prog.v_inds(:,N));
 
       % Add constraints on base
@@ -359,7 +359,7 @@ classdef Hopper < handle
         for k = 1:2
           foot_position_fcn{i, k} = drakeFunction.kinematic.WorldPosition(robot, foot(i,k).id);
           for n = 1:N
-            tol = 1e-2;
+            tol = 1e-1;
             lb = -tol*ones(2,1);
             ub = tol*ones(2,1);
             if k == 1
