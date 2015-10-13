@@ -187,7 +187,7 @@ opt_nlp = SolverFactory('ipopt')
 opt_minlp = constructCouenneSolver()
 
 #opt = constructGurobiSolver(mipgap=0.8, MIPFocus=1, TimeLimit=90., Threads=11)
-opt = constructGurobiSolver(mipgap=0.5, TimeLimit=120., Threads=11)
+opt = constructGurobiSolver(TimeLimit=480., Threads=11)
 #opt = constructGurobiSolver(TimeLimit=50., Threads=11)
 
 hop.constructVisualizer()
