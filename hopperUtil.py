@@ -83,10 +83,10 @@ def addThreePlatfomWorld(hop, legLength, step_height):
     platform1_height = 0*step_height
     platform2_start = platform1_end + gap_length
     platform2_end = platform2_start + step_length
-    platform2_height = 1*step_height
+    platform2_height = 2*step_height
     platform3_start = platform2_end + gap_length
     platform3_end = platform3_start + step_length
-    platform3_height = 2*step_height
+    platform3_height = -1*step_height
     hop.addPlatform(platform1_start/legLength, platform1_end/legLength, platform1_height/legLength, 1, 0.5*4.78*step_length, -0.5*4.78*step_length)
     hop.addPlatform(platform2_start/legLength, platform2_end/legLength, platform2_height/legLength, 1, 0.5*4.78*step_length, 0.5*4.78*step_length - 3.25*step_length)
     hop.addPlatform(platform3_start/legLength, platform3_end/legLength, platform3_height/legLength, 1, 0.5*4.78*step_length, -0.5*4.78*step_length)
