@@ -9,11 +9,11 @@ from hopper import Hopper
 from hopperUtil import *
 
 desiredPrecision = 2
-N = 25
+N = 15
 tf = 2*1.6
 legLength = 0.16
 r0 = [0, legLength/2]
-rf = [1.0, legLength]
+rf = [0.5, legLength]
 v0 = [0, 0]
 w0 = 0
 hipOffset = {'front': {'x': 0.5, 'z': -0.25}, 'hind': {'x': -0.5, 'z': -0.25}}
