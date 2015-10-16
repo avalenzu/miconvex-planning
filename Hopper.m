@@ -403,7 +403,10 @@ classdef Hopper < handle
           idx = find(obj.region_indicators(j, :, i));
           if ~isempty(idx)
             for k = 1:2 % left-right
-              constraint = DrakeFunctionConstraint(lb, ub, region_fcn(foot_position_fcn{i,k}));
+              fcn = region_fcn(foot_position_fcn{i,k});
+%               debug = drakeFunction.Debug(fcn.dim_output, @(f,df) display(f(f>0)));
+%               fcn = compose(debug, fcn);
+              constraint = DrakeFunctionConstraint(lb, ub, fcn);
               for time_index = reshape(idx, 1, [])
                 cnstr_inds = prog.q_inds(:,time_index);
                 prog = prog.addConstraint(constraint,cnstr_inds);
@@ -425,7 +428,7 @@ classdef Hopper < handle
                 idx(idx < 1 | idx > N) = [];
                 for time_index = reshape(idx, 1, [])
                   cnstr_inds = prog.q_inds(:,time_index);
-                  %prog = prog.addConstraint(constraint,cnstr_inds);
+                  prog = prog.addConstraint(constraint,cnstr_inds);
                 end
               end
             end
@@ -504,7 +507,7 @@ classdef Hopper < handle
       for i = 1:numel(prog.lambda_inds)
         sol.lambda{i} = reshape(x_sol(prog.lambda_inds{i}),size(prog.lambda_inds{i},1),[],N);
       end
-      sol.xtraj= PPTrajectory(foh(sol.t,[sol.q;sol.v]));
+      sol.xtraj= PPTrajectory(zoh(sol.t,[sol.q;sol.v]));
       sol.xtraj= sol.xtraj.setOutputFrame(robot.getStateFrame);
     end
 

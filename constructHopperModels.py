@@ -22,13 +22,14 @@ matlab_hopper = eng.Hopper(legLength, hipOffset)
 hop = Hopper(N, eng, matlab_hopper)
 # hop.mdt_precision = int(ceil(-np.log2(desiredPrecision)))
 hop.dtBounds = tuple((1/sqrt(legLength/9.81))*np.array([0.05, 0.2]))
-hop.dtNom = 0.05*(1/sqrt(legLength/9.81))
+hop.dtNom = 0.04*(1/sqrt(legLength/9.81))
 hop.rotationMax = np.pi/8
 hop.nOrientationSectors = 1 #int(floor(np.pi/8/desiredPrecision))
 print 'hop.nOrientationSectors = %d' % hop.nOrientationSectors
 hop.velocityMax = 3.
 hop.positionMax = 1.5*rf[0]/legLength
 hop.forceMax = 3.
+hop.angularVelocityMax = 5.
 addThreePlatfomWorld(hop, legLength, 0.25*legLength)
 #addFlatWorld(hop, legLength)
 hop.constructVisualizer()
@@ -187,7 +188,7 @@ opt_nlp = SolverFactory('ipopt')
 opt_minlp = constructCouenneSolver()
 
 #opt = constructGurobiSolver(mipgap=0.8, MIPFocus=1, TimeLimit=90., Threads=11)
-opt = constructGurobiSolver(TimeLimit=480., Threads=11)
+opt = constructGurobiSolver(mipgap=0.5, TimeLimit=480., Threads=11)
 #opt = constructGurobiSolver(TimeLimit=50., Threads=11)
 
 hop.constructVisualizer()
