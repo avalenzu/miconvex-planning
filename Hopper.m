@@ -316,7 +316,7 @@ classdef Hopper < handle
       prog = prog.addCost(QuadraticConstraint(-Inf, Inf, eye(numel(prog.h_inds)), zeros(numel(prog.h_inds),1)), prog.h_inds(:));
 
       % Add symmetry constraints
-      %prog = prog.addConstraint(obj.symmetryConstraint(obj.littleDog, 2:N), prog.q_inds(:,2:end));
+       prog = prog.addConstraint(obj.symmetryConstraint(obj.littleDog, 2:N), prog.q_inds(:,2:end));
       %
       % Constrain hip roll
       posture_constraint = PostureConstraint(robot);
