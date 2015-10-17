@@ -176,7 +176,7 @@ classdef Hopper < handle
       assert(~isempty(obj.r_data), 'You must load data first!');
       robot = obj.littleDog;
       nq = robot.getNumPositions();
-      min_distance = 0.01;
+      min_distance = 0.03;
       foot = struct('id',[],'in_stance',[]);
       foot(1,1).id = robot.findFrameId('front_left_foot_center');
       foot(1,2).id = robot.findFrameId('front_right_foot_center'); 
