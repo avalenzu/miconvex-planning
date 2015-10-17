@@ -190,7 +190,6 @@ classdef Hopper < handle
         end
       end
       robot = robot.compile();
-      obj.littleDog = robot;
       N = size(obj.r_data, 2);
 
       % Load nominal data
