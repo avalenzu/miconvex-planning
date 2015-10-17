@@ -423,6 +423,9 @@ classdef Hopper < handle
                 time_index = cell(numel(start_idx),1);
                 for l = 1:numel(start_idx)
                   time_index{l} = idx(start_idx(l):end_idx(l));
+                  if time_index{l}(1) ~= 1
+                    time_index{l} = [time_index{l}(1)-1, time_index{l}];
+                  end
                 end
                 prog = prog.addRigidBodyConstraint(WorldFixedPositionConstraint(robot,foot(i,k).id, zeros(3,1)),time_index);
               else
