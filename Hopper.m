@@ -286,7 +286,8 @@ classdef Hopper < handle
                 FC_edge = bsxfun(@plus, FC_axis, mu*(bsxfun(@times,cos(FC_angles),FC_perp1) + ...
                   bsxfun(@times,sin(FC_angles),FC_perp2)));
                 %contact_wrench_struct(end+1).active_knot = setdiff(idx, _idx);
-                contact_wrench_struct(end+1).active_knot = setdiff(idx, end_idx);
+                contact_wrench_struct(end+1).active_knot = idx;
+                contact_wrench_struct(end).active_knot(end_idx) = [];
                 %contact_wrench_struct(end+1).active_knot = idx;
                 %contact_wrench_struct(end).cw = LinearFrictionConeWrench(robot,foot(i,k).id,zeros(3,1),FC_edge);
                 contact_wrench_struct(end).cw = FrictionConeWrench(robot,foot(i,k).id,zeros(3,1),mu,FC_axis);
