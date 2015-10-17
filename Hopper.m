@@ -201,7 +201,7 @@ classdef Hopper < handle
       % Set up time parameters
       dt = diff(obj.t_data);
       dt_range = [min(dt), max(dt)];
-      tf_range = [0.5*N*dt_range(1), 2*N*dt_range(2)];
+      tf_range = [0.5*N*dt_range(1), 3*N*dt_range(2)];
       %tf_range = [obj.t_data(end), obj.t_data(end)];
       
       % Compute q_nom
@@ -310,7 +310,7 @@ classdef Hopper < handle
       prog = prog.addRigidBodyConstraint(MinDistanceConstraint(robot, min_distance),1:N);
 
       % Add Timestep bounds
-      h_min = 0.5*dt_range(1); h_max = 2*dt_range(2);
+      h_min = 0.5*dt_range(1); h_max = 3*dt_range(2);
       prog = prog.addBoundingBoxConstraint(BoundingBoxConstraint(h_min*ones(N-1,1),h_max*ones(N-1,1)),prog.h_inds(:));
       %prog = prog.addConstraint(ConstantConstraint(dt), prog.h_inds(:));
       prog = prog.addCost(QuadraticConstraint(-Inf, Inf, eye(numel(prog.h_inds)), zeros(numel(prog.h_inds),1)), prog.h_inds(:));
