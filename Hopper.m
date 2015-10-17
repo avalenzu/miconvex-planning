@@ -513,7 +513,7 @@ classdef Hopper < handle
       for i = 1:numel(prog.lambda_inds)
         sol.lambda{i} = reshape(x_sol(prog.lambda_inds{i}),size(prog.lambda_inds{i},1),[],N);
       end
-      sol.xtraj= PPTrajectory(zoh(sol.t,[sol.q;sol.v]));
+      sol.xtraj= PPTrajectory(foh(sol.t,[sol.q;sol.v]));
       sol.xtraj= sol.xtraj.setOutputFrame(robot.getStateFrame);
     end
 
