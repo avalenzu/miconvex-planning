@@ -430,9 +430,9 @@ classdef Hopper < handle
                 prog = prog.addRigidBodyConstraint(WorldFixedPositionConstraint(robot,foot(i,k).id, zeros(3,1)),time_index);
               else
                 % swing feet collision avoidance
-                idx = setdiff([idx-1, idx+1], idx);
-                idx(idx < 1 | idx > N) = [];
-                for time_index = reshape(idx, 1, [])
+                swing_idx = setdiff([idx-1, idx+1], idx);
+                swing_idx(swing_idx < 1 | swing_idx > N) = [];
+                for time_index = reshape(swing_idx, 1, [])
                   cnstr_inds = prog.q_inds(:,time_index);
                   prog = prog.addConstraint(constraint,cnstr_inds);
                 end
