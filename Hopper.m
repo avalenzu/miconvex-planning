@@ -323,7 +323,8 @@ classdef Hopper < handle
       hip_inds = robot.findPositionIndices('hip_roll');
       knee_inds = robot.findPositionIndices('knee');
       joint_inds = [hip_inds; knee_inds];
-      posture_constraint = posture_constraint.setJointLimits(joint_inds, [zeros(size(hip_inds)); -Inf(2,1); zeros(2,1)], [zeros(size(hip_inds)); zeros(2,1); Inf(2,1)]);
+      knee_lb = 60*pi/180;
+      posture_constraint = posture_constraint.setJointLimits(joint_inds, [zeros(size(hip_inds)); -Inf(2,1); knee_lb*ones(2,1)], [zeros(size(hip_inds)); -knee_lb*ones(2,1); Inf(2,1)]);
       prog = prog.addRigidBodyConstraint(posture_constraint, 1:N);
 
 
