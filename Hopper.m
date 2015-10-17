@@ -183,8 +183,8 @@ classdef Hopper < handle
       foot(2,1).id = robot.findFrameId('back_left_foot_center');
       foot(2,2).id = robot.findFrameId('back_right_foot_center');
       foot_positions = bsxfun(@plus, obj.r_data, obj.r_hip_data + obj.p_data);
-      knee = RigidBodySphere(0.01);
       for i = 1:2
+        knee = RigidBodySphere(0.01, [(-1)^i*0.0265; 0; 0], [0; 0; 0]);
         for j = 1:2
           robot = robot.addCollisionGeometryToBody(robot.getFrame(foot(i,j).id).body_ind, knee);
         end
@@ -231,7 +231,7 @@ classdef Hopper < handle
         else
           qseed = q_nom(:,n-1);
         end
-        [q_nom(:, n), info, infeasible_constraint] = robot.inverseKin(qseed, qstar, foot_constraints{:}, min_distance_constraint, com_constraint, posture_constraint,  ikoptions);
+        [q_nom(:, n), info, infeasible_constraint] = robot.inverseKin(qseed, qstar, foot_constraints{:}, com_constraint, posture_constraint,  ikoptions);
         assert(info < 10)
       end
       %keyboard
