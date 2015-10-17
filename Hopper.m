@@ -374,14 +374,14 @@ classdef Hopper < handle
             end
             foot_position = zeros(3, 1);
             foot_position([1, 3]) = foot_positions(:, n, i);
-            %xz_error_fcn = drakeFunction.Affine([1, 0, 0; 0, 0, 1], -foot_positions(:, n, i));
-            xz_error_fcn = drakeFunction.Affine(eye(3), -foot_position);
+            xz_error_fcn = drakeFunction.Affine([1, 0, 0; 0, 0, 1], -foot_positions(:, n, i));
+            %xz_error_fcn = drakeFunction.Affine(eye(3), -foot_position);
             norm_squared_fcn = drakeFunction.euclidean.NormSquared(2);
-            %cost = DrakeFunctionConstraint(-Inf, Inf, norm_squared_fcn(xz_error_fcn(foot_position_fcn{i,k})));
-            constraint = DrakeFunctionConstraint(lb, ub, xz_error_fcn(foot_position_fcn{i,k}));
+            norm_squared_fcn = drakeFunction.euclidean.NormSquared(2);
+            cost = DrakeFunctionConstraint(-Inf, Inf, norm_squared_fcn(xz_error_fcn(foot_position_fcn{i,k})));
+            %constraint = DrakeFunctionConstraint(lb, ub, xz_error_fcn(foot_position_fcn{i,k}));
             cnstr_inds = prog.q_inds(:,n);
-            %prog = prog.addCost(cost, cnstr_inds);
-            prog = prog.addConstraint(constraint, cnstr_inds);
+            prog = prog.addCost(cost, cnstr_inds);
           end
         end
       end
