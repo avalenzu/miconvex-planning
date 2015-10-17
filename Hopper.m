@@ -301,7 +301,7 @@ classdef Hopper < handle
       %prog = prog.setCheckGrad(true);
 
       % Add velocity constraints
-      max_joint_velocity = 3*pi;
+      max_joint_velocity = 4*pi;
       lb = -max_joint_velocity*ones(nq-6, N);
       ub = max_joint_velocity*ones(nq-6, N);
       prog = prog.addConstraint(BoundingBoxConstraint(lb, ub), prog.v_inds(7:end, :));
