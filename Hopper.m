@@ -313,7 +313,7 @@ classdef Hopper < handle
       h_min = 0.5*dt_range(1); h_max = 3*dt_range(2);
       prog = prog.addBoundingBoxConstraint(BoundingBoxConstraint(h_min*ones(N-1,1),h_max*ones(N-1,1)),prog.h_inds(:));
       %prog = prog.addConstraint(ConstantConstraint(dt), prog.h_inds(:));
-      prog = prog.addCost(QuadraticConstraint(-Inf, Inf, eye(numel(prog.h_inds)), zeros(numel(prog.h_inds),1)), prog.h_inds(:));
+      %prog = prog.addCost(QuadraticConstraint(-Inf, Inf, eye(numel(prog.h_inds)), zeros(numel(prog.h_inds),1)), prog.h_inds(:));
 
       % Add symmetry constraints
        prog = prog.addConstraint(obj.symmetryConstraint(obj.littleDog, 2:N), prog.q_inds(:,2:end));
