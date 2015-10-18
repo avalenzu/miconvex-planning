@@ -70,6 +70,112 @@ classdef Hopper < handle
       obj.littleDog = obj.littleDog.compile();
     end
 
+    function regions = addLittleDogTerrain(obj, terrain_name, resolution, threshold, min_region_size, visualize)
+      checkDependency('iris');
+      import iris.terrain_grid.*;
+      import iris.inflate_region;
+      import iris.thirdParty.polytopes.*;
+      import iris.cspace.*;
+      import iris.drawing.*;
+
+      if nargin < 3 || isempty(threshold), threshold = 4e-5; end
+      if nargin < 4 || isempty(resolution), resolution = 0.01; end
+      if nargin < 5 || isempty(min_region_size), min_region_size = 50; end
+      if nargin < 6 || isempty(visualize), visualize = true; end
+      terrain = LittleDogTerrain(terrain_name);
+      obj.littleDog = obj.littleDog.setTerrain(terrain);
+      obj.littleDog = obj.littleDog.compile();
+      obj.rbm_vis = obj.rbm_vis.setTerrain(terrain);
+      obj.rbm_vis = obj.rbm_vis.compile();
+      x_min = terrain.x_positions(1);
+      x_max = terrain.x_positions(end);
+      y_min = 0;
+      y_max = 0.5;
+      n_x_samples = ceil((x_max - x_min)/resolution);
+      n_y_samples = ceil((y_max - y_min)/resolution);
+      x = linspace(x_min, x_max, n_x_samples);
+      y = linspace(y_min, y_max, n_y_samples);
+      [X, Y] = meshgrid(x, y);
+      heights = reshape(terrain.getHeight([X(:), Y(:)]'), ...
+                        n_y_samples, n_x_samples);
+      scale = 1;
+      %heights = imresize(heights, scale);
+
+      threshold = threshold/scale;
+      Q =     imfilter(heights, [1, -1]) - (threshold) > 0;
+      Q = Q | imfilter(heights, [-1, 1]) - (threshold) > 0;
+      Q = Q | imfilter(heights, [1; -1]) - (threshold) > 0;
+      Q = Q | imfilter(heights, [-1; 1]) - (threshold) > 0;
+      Q(isnan(heights)) = 1;
+
+      % grid = Q(85:125,25:85);
+      grid = ~Q;
+      if visualize
+        lcmgl = LCMGLClient('Hopper');
+        figure(16)
+        %surf(heights);
+        imshow(grid, 'InitialMagnification', 'fit')
+        hold on;
+      end
+      t0 = tic;
+      [obstacles, A, b, mask] = iris.terrain_grid.segment_grid(grid);
+      b = cellfun(@(bi) resolution*bi, b, 'UniformOutput', false);
+      toc(t0);
+      cull_index = cellfun(@(m) sum(m(:)) < min_region_size, mask);
+      obstacles(cull_index) = [];
+      A(cull_index) = [];
+      b(cull_index) = [];
+      mask(cull_index) = [];
+      % profile viewer
+
+      x_coords = cell(size(obstacles));
+      y_coords = cell(size(obstacles));
+      regions = cell(2*numel(obstacles), 1);
+      for j = 1:length(obstacles)
+        obs = obstacles{j};
+        if visualize
+          figure(16)
+          plot(obs(2,:), obs(1,:),'r-');
+          lcmgl.glColor3f(0,0,0);
+          lcmgl.glLineWidth(5);
+          lcmgl.glBegin(lcmgl.LCMGL_LINES);
+          for i = 1:size(obs,2)-1
+            lcmgl.glVertex3d(resolution*obs(2,i),resolution*obs(1,i),terrain.getHeight([resolution*obs(2,i); resolution*obs(1,i)]));
+            lcmgl.glVertex3d(resolution*obs(2,i+1),resolution*obs(1,i+1),terrain.getHeight([resolution*obs(2,i+1); resolution*obs(1,i+1)]));
+          end
+          lcmgl.glVertex3d(resolution*obs(2,end),resolution*obs(1,end),terrain.getHeight([resolution*obs(2,end); resolution*obs(1,end)]));
+          lcmgl.glVertex3d(resolution*obs(2,1),resolution*obs(1,1),terrain.getHeight([resolution*obs(2,1); resolution*obs(1,1)]));
+          lcmgl.glEnd();
+        end
+        [y_coords{j}, x_coords{j}] = find(mask{j});
+        zj = heights(sub2ind(size(heights), y_coords{j}, x_coords{j}));
+        xj = x(x_coords{j});
+        yj = y(y_coords{j});
+        f = fit([xj(:), yj(:)], zj, 'poly11');
+        % z = p00 +  p10*x + p01*y
+        % p00 == -z + p10*x + p01*y
+        % p00/norm([-1; p10; p01]) == normalized([-1; p10; p01])'*[-1; p10; p01]
+        n = [f.p10, f.p01, -1];
+        c = f.p00;
+        c = c/norm(n);
+        n = n./norm(n);
+        if n(3) < 0
+          n = -n;
+          c = -c;
+        end
+        A{j} = [A{j}, zeros(size(A{j},1), 1)];
+        Aeq{j} = n;
+        beq{j} = c;
+        regions{j} = struct('A', A{j}, 'b', b{j}, 'Aeq', Aeq{j}, 'beq', beq{j}, 'mu', 1, 'normal', n);
+        regions{numel(obstacles) + j} = struct('A', [A{j}; n], 'b', [b{j}; c]);
+      end
+      regions{end+1} = struct('A', [0, 0, -1], 'b', max(heights(:)));
+      if visualize
+        lcmgl.switchBuffers();
+        hold off
+      end
+    end
+
     function q_data = getQData(obj)
       q_data = obj.q_data;
     end
