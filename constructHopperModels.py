@@ -12,8 +12,8 @@ desiredPrecision = 2
 N = 25
 tf = 2*1.6
 legLength = 0.16
-r0 = [0, legLength/2]
-rf = [1.0, legLength]
+r0 = [0.5, legLength/2]
+rf = [1.5, legLength]
 v0 = [0, 0]
 w0 = 0
 hipOffset = {'front': {'x': 0.5, 'z': -0.25}, 'hind': {'x': -0.5, 'z': -0.25}}
@@ -22,15 +22,16 @@ matlab_hopper = eng.Hopper(legLength, hipOffset)
 hop = Hopper(N, eng, matlab_hopper)
 # hop.mdt_precision = int(ceil(-np.log2(desiredPrecision)))
 hop.dtBounds = tuple((1/sqrt(legLength/9.81))*np.array([0.05, 0.2]))
-hop.dtNom = 0.04*(1/sqrt(legLength/9.81))
-hop.rotationMax = np.pi/8
+hop.dtNom = 0.06*(1/sqrt(legLength/9.81))
+hop.rotationMax = np.pi/4
 hop.nOrientationSectors = 1 #int(floor(np.pi/8/desiredPrecision))
 print 'hop.nOrientationSectors = %d' % hop.nOrientationSectors
 hop.velocityMax = 3.
 hop.positionMax = 1.5*rf[0]/legLength
 hop.forceMax = 3.
 hop.angularVelocityMax = 5.
-addThreePlatfomWorld(hop, legLength, 0.25*legLength)
+hop.addLittleDogTerrain(['terrainO', 'terrainB', 'terrainO'], [0., 0., 0.], 0.02, 5e-3, 20.)
+#addThreePlatfomWorld(hop, legLength, 0.25*legLength)
 #addFlatWorld(hop, legLength)
 hop.constructVisualizer()
 m_nlp = hop.constructPyomoModel()
@@ -188,7 +189,7 @@ opt_nlp = SolverFactory('ipopt')
 opt_minlp = constructCouenneSolver()
 
 #opt = constructGurobiSolver(mipgap=0.8, MIPFocus=1, TimeLimit=90., Threads=11)
-opt = constructGurobiSolver(mipgap=0.5, TimeLimit=480., Threads=11)
+opt = constructGurobiSolver(mipgap=0.5, TimeLimit=3600., Threads=11)
 #opt = constructGurobiSolver(TimeLimit=50., Threads=11)
 
 hop.constructVisualizer()

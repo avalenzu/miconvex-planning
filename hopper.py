@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import matlab.engine
+import pdb
 from pyomo.environ import *
 from pyomo.dae import *
 from pyomo.gdp import *
@@ -46,9 +47,10 @@ class Hopper:
         self.footnames = self.hipOffset.keys()
 
     def addPlatform(self, platform_start, platform_end, platform_height, mu, platform_left, platform_right):
-        self.addRegion(A=np.matrix('-1., 0.,; 1., 0.'),
-                       b=np.matrix('%f; %f' % (-(platform_start+0.1), platform_end-0.1)),
-                       Aeq=np.array([0., 1.]), beq=platform_height, normal=np.matrix('0.; 1.'),
+        self.addRegion(A=np.array([[-1., 0, 0.], [1., 0, 0.], [0., -1., 0.], [0., 1., 0.]]),
+                       #b=np.matrix('%f; %f' % (-(platform_start+0.1), platform_end-0.1)),
+                       b=np.array([[-(platform_start+0.1)], [platform_end-0.1], [-platform_right], [platform_left]]),
+                       Aeq=np.array([0., 0, 1.]), beq=platform_height, normal=np.array([[0.], [0.], [1.]]),
                        mu=mu)
         self.eng.addPlatform(self.matlabHopper, platform_start, platform_end, platform_height, platform_left, platform_right, nargout=0)
 
@@ -56,18 +58,30 @@ class Hopper:
         Arows = []
         brows = []
         if left is not None:
-            Arows.append(np.matrix('-1., 0.'))
-            brows.append(np.matrix(-left))
+            Arows.append(np.array([-1., 0., 0.]))
+            brows.append(np.array(-left))
         if right is not None:
-            Arows.append(np.matrix('1., 0.'))
-            brows.append(np.matrix(right))
+            Arows.append(np.array([1., 0., 0.]))
+            brows.append(np.array(right))
         if top is not None:
-            Arows.append(np.matrix('0., 1.'))
-            brows.append(np.matrix(top))
+            Arows.append(np.array([0., 0., 1.]))
+            brows.append(np.array(top))
         if bottom is not None:
-            Arows.append(np.matrix('0., -1.'))
-            brows.append(np.matrix(-bottom))
+            Arows.append(np.array([0., 0., -1.]))
+            brows.append(np.array(-bottom))
         self.addRegion(A=np.vstack(Arows), b=np.vstack(brows))
+
+    def addLittleDogTerrain(self, *args):
+        regions = self.eng.addLittleDogTerrain(self.matlabHopper, *args)
+        for region in regions:
+            for key, value in region.iteritems():
+                if isinstance(value, type(matlab.double([]))):
+                    numel = value.size[0]*value.size[1]
+                    value_size = value.size
+                    value.reshape((numel,1))
+                    region[key] = np.array([value[i][0] for i in range(numel)]);
+                    region[key] = region[key].reshape(value_size, order='F')
+            self.addRegion(**region)
 
 
     def addRegion(self, **kwargs):
@@ -96,7 +110,8 @@ class Hopper:
         return np.cumsum([0.]+[m.dt[ti].value for ti in m.t][:-1])
 
     def extractPostition(self, m):
-        return np.vstack([np.array([m.r[xz, ti].value for ti in m.t]) for xz in m.R2_INDEX])
+        r = np.vstack([np.array([m.r[xz, ti].value for ti in m.t]) for xz in m.R2_INDEX])
+        return np.insert(r, 1, m.y.value, axis=0)
 
     def extractVelocity(self, m):
         return np.vstack([np.array([m.v[xz, ti].value for ti in m.t]) for xz in m.R2_INDEX])
@@ -108,10 +123,10 @@ class Hopper:
         return np.atleast_2d(np.array([m.th[ti].value for ti in m.t]))
 
     def extractHipPosition(self, m):
-        return np.dstack([np.vstack([np.array([m.hip[foot, xz, ti].value for ti in m.t]) for xz in m.R2_INDEX]) for foot in m.feet])
+        return np.dstack([np.insert(np.vstack([np.array([m.hip[foot, xz, ti].value for ti in m.t]) for xz in m.R2_INDEX]), 1, 0., axis=0) for foot in m.feet])
 
     def extractRelativeFootPosition(self, m):
-        return np.dstack([np.vstack([np.array([m.p[foot, xz, ti].value for ti in m.t]) for xz in m.R2_INDEX]) for foot in m.feet])
+        return np.dstack([np.insert(np.vstack([np.array([m.p[foot, xz, ti].value for ti in m.t]) for xz in m.R2_INDEX]), 1, 0., axis=0) for foot in m.feet])
 
     def extractFootForce(self, m):
         return np.dstack([np.vstack([np.array([m.f[foot, xz, ti].value for ti in m.t]) for xz in m.R2_INDEX]) for foot in m.feet])
@@ -167,7 +182,10 @@ class Hopper:
                 theta = -np.arctan(mu)
             R = np.matrix([[cos(theta), -sin(theta)],
                           [sin(theta),  cos(theta)]])
-            vec = R*(self.regions[region]['normal'])
+            n = self.regions[region]['normal']
+            if not isinstance(n, type(np.matrix([0]))):
+                n = np.matrix([[n[0, 0]], [n[-1, 0]]])
+            vec = R*n
             if xz == 'x':
                 return float(vec[0])
             else:
@@ -200,6 +218,9 @@ class Hopper:
         model.foot = Var(model.feet, model.R2_INDEX, model.t, bounds=(-self.positionMax, self.positionMax))
         model.cth = Var(model.t, bounds=(-1,1))
         model.sth = Var(model.t, bounds=(-1,1))
+        model.y = Var(bounds=(-self.positionMax,self.positionMax), initialize=0.)
+        #model.y = Param(initialize=0.25)
+        #m_y = 0.25
 
         # Fix final dt to zero
         model.dt[model.t[-1]].value = 0.0
@@ -274,7 +295,7 @@ class Hopper:
         def _hipPositionRule(m, foot, xz, t):
             if xz == 'x':
                 return m.hip[foot, xz, t] == m.hipOffset[foot, 'x']*m.cth[t] + m.hipOffset[foot, 'z']*m.sth[t]
-            else:
+            elif xz == 'z':
                 return m.hip[foot, xz, t] == m.hipOffset[foot, 'z']*m.cth[t] - m.hipOffset[foot, 'x']*m.sth[t]
         model.hipPositionConstraint = Constraint(model.feet, model.R2_INDEX, model.t, rule=_hipPositionRule)
 
@@ -317,6 +338,17 @@ class Hopper:
 
         model.orientationConstraint = Constraint(model.t, rule=_orientationRule)
 
+        def cleanupRegionConstraint(A, b):
+            #A = np.atleast_2d(A)
+            #b = np.atleast_1d(b)
+            #toDelete = []
+            #for j in range(A.shape[0]):
+                #if 1 - abs(A[j][1]) < 1e-3:
+                    #toDelete.append(j)
+            #A = np.delete(A, toDelete, 0)
+            #b = np.delete(b, toDelete)
+            return A, b
+
         def _footRegionConstraints(disjunct, region, foot, t):
             m = disjunct.model()
             A = None
@@ -326,34 +358,42 @@ class Hopper:
             if self.regions[region]['Aeq'] is not None:
                 Aeq = self.regions[region]['Aeq']
                 beq = self.regions[region]['beq']
+                #Aeq = np.atleast_2d(Aeq)
+                #beq = np.atleast_1d(beq)
                 if A is not None:
                     A = np.vstack((A, Aeq, -Aeq))
                     b = np.vstack((b, beq, -beq))
                 else:
                     A = np.vstack((Aeq, -Aeq))
                     b = np.vstack((beq, -beq))
-            A = np.atleast_2d(A)
-            b = np.atleast_1d(b)
+            A, b = cleanupRegionConstraint(A, b)
             def _contactPositionConstraint(disjunctData, i):
                 m = disjunctData.model()
-                return A[i,0]*m.foot[foot, 'x', t] + A[i,1]*m.foot[foot, 'z', t] <= float(b[i])
+                #if 1 - np.linalg.norm(A[i,1]) < 1e-3:
+                    #return Constraint.Skip
+                #print '%s, %s, %s, %s' % (region, foot, t, i)
+                return A[i,0]*m.foot[foot, 'x', t] + float(A[i,1])*m.y + A[i,2]*m.foot[foot, 'z', t] <= float(b[i])
             disjunct.contactPositionConstraint = Constraint(range(A.shape[0]), rule=_contactPositionConstraint)
 
             def _footCollisionAvoidanceConstraint(disjunctData, i, pm1):
                 m = disjunctData.model()
                 if self.regions[region]['mu'] == 0. and t != m.t[-1] and t != m.t[1]:
-                    return A[i,0]*m.foot[foot, 'x', t+pm1] + A[i,1]*m.foot[foot, 'z', t+pm1] <= float(b[i])
+                    #if 1 - np.linalg.norm(A[i,1]) < 1e-3:
+                        #return Constraint.Skip
+                    return A[i,0]*m.foot[foot, 'x', t+pm1] + float(A[i,1])*m.y + A[i,2]*m.foot[foot, 'z', t+pm1] <= float(b[i])
                 else:
                     return Constraint.Skip
             disjunct.footCollisionAvoidanceConstraint = Constraint(range(A.shape[0]), [-1, 1], rule=_footCollisionAvoidanceConstraint)
 
             def _hipPositionConstraint(disjunctData, i):
                 if self.regions[region]['mu'] == 0.:
+                    #if 1 - np.linalg.norm(A[i,1]) < 1e-3:
+                        #return Constraint.Skip
                     m = disjunctData.model()
-                    return A[i,0]*(m.r['x', t] + m.hip[foot, 'x', t]) + A[i,1]*(m.r['z', t] + m.hip[foot, 'z', t]) <= float(b[i])
+                    return A[i,0]*(m.r['x', t] + m.hip[foot, 'x', t]) + float(A[i,1])*m.y + A[i,2]*(m.r['z', t] + m.hip[foot, 'z', t]) <= float(b[i])
                 else:
                     return Constraint.Skip
-            disjunct.hipPositionConstraint = Constraint(range(A.shape[0]), rule=_hipPositionConstraint)
+            #disjunct.hipPositionConstraint = Constraint(range(A.shape[0]), rule=_hipPositionConstraint)
 
             def _contactForceConstraint(disjunctData, xz):
                 m = disjunctData.model()
@@ -402,11 +442,12 @@ class Hopper:
                 if self.regions[region]['A'] is not None:
                     A = self.regions[region]['A']
                     b = self.regions[region]['b'] - self.bodyRadius
-                A = np.atleast_2d(A)
-                b = np.atleast_1d(b)
+                A, b = cleanupRegionConstraint(A, b)
                 def _bodyPositionConstraint(disjunctData, i):
                     m = disjunctData.model()
-                    return A[i,0]*m.r['x', t] + A[i,1]*m.r['z', t] <= float(b[i])
+                    #if 1 - np.linalg.norm(A[i,1]) < 1e-3:
+                        #return Constraint.Skip
+                    return A[i,0]*m.r['x', t] + float(A[i,1])*m.y + A[i,2]*m.r['z', t] <= float(b[i])
                 disjunct.bodyPositionConstraint = Constraint(range(A.shape[0]), rule=_bodyPositionConstraint)
 
 

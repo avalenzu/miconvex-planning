@@ -88,14 +88,15 @@ def addThreePlatfomWorld(hop, legLength, step_height):
     platform3_end = platform3_start + step_length
     platform3_height = -1*step_height
     hop.addPlatform(platform1_start/legLength, platform1_end/legLength, platform1_height/legLength, 1, 0.5*4.78*step_length, -0.5*4.78*step_length)
-    hop.addPlatform(platform2_start/legLength, platform2_end/legLength, platform2_height/legLength, 1, 0.5*4.78*step_length, 0.5*4.78*step_length - 3.25*step_length)
+    #hop.addPlatform(platform2_start/legLength, platform2_end/legLength, platform2_height/legLength, 1, 0.5*4.78*step_length, 0.5*4.78*step_length - 3.25*step_length)
+    hop.addPlatform(platform2_start/legLength, platform2_end/legLength, platform2_height/legLength, 1, 0.5*4.78*step_length, 0.5*4.78*step_length - 2.25*step_length)
     hop.addPlatform(platform3_start/legLength, platform3_end/legLength, platform3_height/legLength, 1, 0.5*4.78*step_length, -0.5*4.78*step_length)
     hop.addFreeBlock(bottom=platform1_height/legLength, right=platform2_start/legLength)
     hop.addFreeBlock(bottom=platform2_height/legLength, left=platform1_end/legLength, right=platform3_start/legLength)
     hop.addFreeBlock(bottom=platform3_height/legLength, left=platform2_end/legLength)
 
 def addFlatWorld(hop, legLength):
-    hop.addPlatform(-1./legLength, 10./legLength, 0., 1)
-    hop.addFreeBlock(bottom=0.)
+    hop.addPlatform(0., 1.8/legLength, 0., 1, 0.6/legLength, 0.)
+    hop.addFreeBlock(bottom=0., left=0)
 
 

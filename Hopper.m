@@ -70,19 +70,24 @@ classdef Hopper < handle
       obj.littleDog = obj.littleDog.compile();
     end
 
-    function regions = addLittleDogTerrain(obj, terrain_name, resolution, threshold, min_region_size, visualize)
+    function regions = addLittleDogTerrain(obj, terrain_name, num_ccw_rotations, resolution, threshold, min_region_size, visualize)
       checkDependency('iris');
       import iris.terrain_grid.*;
-      import iris.inflate_region;
+      import iris.inflate_region.*;
       import iris.thirdParty.polytopes.*;
       import iris.cspace.*;
       import iris.drawing.*;
 
-      if nargin < 3 || isempty(threshold), threshold = 4e-5; end
+      if nargin < 3 || isempty(num_ccw_rotations)
+        num_ccw_rotations = zeros(size(terrain_name));
+      elseif iscell(num_ccw_rotations)
+        num_ccw_rotations = cell2mat(num_ccw_rotations)
+      end
       if nargin < 4 || isempty(resolution), resolution = 0.01; end
-      if nargin < 5 || isempty(min_region_size), min_region_size = 50; end
-      if nargin < 6 || isempty(visualize), visualize = true; end
-      terrain = LittleDogTerrain(terrain_name);
+      if nargin < 5 || isempty(threshold), threshold = 4e-3; end
+      if nargin < 6 || isempty(min_region_size), min_region_size = 50; end
+      if nargin < 7 || isempty(visualize), visualize = true; end
+      terrain = LittleDogTerrain(terrain_name, num_ccw_rotations);
       obj.littleDog = obj.littleDog.setTerrain(terrain);
       obj.littleDog = obj.littleDog.compile();
       obj.rbm_vis = obj.rbm_vis.setTerrain(terrain);
@@ -90,7 +95,7 @@ classdef Hopper < handle
       x_min = terrain.x_positions(1);
       x_max = terrain.x_positions(end);
       y_min = 0;
-      y_max = 0.5;
+      y_max = 0.6;
       n_x_samples = ceil((x_max - x_min)/resolution);
       n_y_samples = ceil((y_max - y_min)/resolution);
       x = linspace(x_min, x_max, n_x_samples);
@@ -131,6 +136,7 @@ classdef Hopper < handle
       x_coords = cell(size(obstacles));
       y_coords = cell(size(obstacles));
       regions = cell(2*numel(obstacles), 1);
+      %regions = cell(numel(obstacles), 1);
       for j = 1:length(obstacles)
         obs = obstacles{j};
         if visualize
@@ -153,23 +159,23 @@ classdef Hopper < handle
         yj = y(y_coords{j});
         f = fit([xj(:), yj(:)], zj, 'poly11');
         % z = p00 +  p10*x + p01*y
-        % p00 == -z + p10*x + p01*y
+        % -p00 == -z + p10*x + p01*y
         % p00/norm([-1; p10; p01]) == normalized([-1; p10; p01])'*[-1; p10; p01]
         n = [f.p10, f.p01, -1];
-        c = f.p00;
+        c = -f.p00;
         c = c/norm(n);
         n = n./norm(n);
         if n(3) < 0
           n = -n;
           c = -c;
         end
-        A{j} = [A{j}, zeros(size(A{j},1), 1)];
+        A{j} = [A{j}(:,2), A{j}(:,1), zeros(size(A{j},1), 1)];
         Aeq{j} = n;
         beq{j} = c;
-        regions{j} = struct('A', A{j}, 'b', b{j}, 'Aeq', Aeq{j}, 'beq', beq{j}, 'mu', 1, 'normal', n);
-        regions{numel(obstacles) + j} = struct('A', [A{j}; n], 'b', [b{j}; c]);
+        regions{j} = struct('A', A{j}, 'b', b{j}./obj.leg_length, 'Aeq', Aeq{j}, 'beq', beq{j}./obj.leg_length, 'mu', 1, 'normal', n');
+        regions{numel(obstacles) + j} = struct('A', [A{j}; -n], 'b', [b{j}; -c]./obj.leg_length);
       end
-      regions{end+1} = struct('A', [0, 0, -1], 'b', max(heights(:)));
+      regions{end+1} = struct('A', [0, 0, -1; -1, 0, 0], 'b', [-max(heights(:)); -x_min]./obj.leg_length);
       if visualize
         lcmgl.switchBuffers();
         hold off
@@ -208,15 +214,15 @@ classdef Hopper < handle
       n_feet = size(obj.p_data, 3);
       leg_pitch_data  = zeros(1, N, double(n_feet));
       for j = 1:double(n_feet)
-        leg_pitch_data(:,:,j) = -atan2(obj.p_data(1,:,j), -obj.p_data(2,:,j));
+        leg_pitch_data(:,:,j) = -atan2(obj.p_data(1,:,j), -obj.p_data(3,:,j));
       end
       q_data = zeros(obj.rbm_vis.getNumPositions(), N);
-      q_data([1,3], :) = obj.r_data;
+      q_data([1,2,3], :) = obj.r_data;
       q_data(5, :) = obj.th_data;
       for j = 1:n_feet
-        q_data(6 + 12*(j-1) + [1,3], :) = obj.r_data + obj.r_hip_data(:,:,j) + obj.p_data(:,:,j);
+        q_data(6 + 12*(j-1) + [1,2,3], :) = obj.r_data + obj.r_hip_data(:,:,j) + obj.p_data(:,:,j);
         q_data(6 + 12*(j-1) + 5, :) = leg_pitch_data(:,:,j);
-        q_data(6 + 12*(j-1) + [7,9], :) = obj.r_data + obj.r_hip_data(:,:,j);
+        q_data(6 + 12*(j-1) + [7,8,9], :) = obj.r_data + obj.r_hip_data(:,:,j);
       end
       obj.q_data = q_data;
 
@@ -229,9 +235,9 @@ classdef Hopper < handle
       obj.T_actual = sum((obj.p_data(1,:,:)+obj.r_hip_data(1,:,:)).*obj.f_data(2,:,:) - (obj.p_data(2,:,:)+obj.r_hip_data(2,:,:)).*obj.f_data(1,:,:),3);
     end
 
-    function playback(obj, speed)
+    function playback(obj, speed, varargin)
       obj.v.playback_speed = speed;
-      obj.v.playback(obj.qtraj, obj.Ftraj)
+      obj.v.playback(obj.qtraj, obj.Ftraj, varargin{:})
     end
 
     function Istar = getDimensionlessMomentOfInertia(obj)
@@ -317,19 +323,17 @@ classdef Hopper < handle
         for i = 1:2 %front-back
           for j = 1:2 %left-right
             lb = NaN(3,1);
-            lb([1,3]) = foot_positions(:, n, i);
+            lb([1,3]) = foot_positions([1,3], n, i);
             ub = lb;
             foot_constraints{i, j} = WorldPositionConstraint(robot, foot(i,j).id, zeros(3,1), lb, ub);
           end
         end
-        lb = zeros(3, 1);
-        lb([1,3]) = obj.r_data(:, n);
-        lb(2) = NaN;
+        lb = obj.r_data(:, n);
         ub = lb;
         com_constraint = WorldCoMConstraint(robot, lb, ub);
         hip_inds = robot.findPositionIndices('hip_roll');
         posture_constraint = PostureConstraint(robot);
-        posture_constraint = posture_constraint.setJointLimits([2;4;5;6;hip_inds], [0; 0; -pi/8; 0; zeros(size(hip_inds))], [0; 0; pi/8; 0; zeros(size(hip_inds))]);
+        posture_constraint = posture_constraint.setJointLimits([4;5;6;hip_inds], [0; -pi/8; 0; zeros(size(hip_inds))], [0; pi/8; 0; zeros(size(hip_inds))]);
         min_distance_constraint = MinDistanceConstraint(robot, min_distance);
         ikoptions = IKoptions(robot);
         if n == 1
@@ -384,8 +388,7 @@ classdef Hopper < handle
             end
             if ~isempty(idx)
               for k = 1:2 % left-right
-                FC_axis = zeros(3,1);
-                FC_axis([1,3]) = obj.regions(j).normal;
+                FC_axis = obj.regions(j).normal;
                 FC_perp1 = rotx(pi/2)*FC_axis;
                 FC_perp2 = cross(FC_axis, FC_perp1);
                 FC_edge = bsxfun(@plus, FC_axis, mu*(bsxfun(@times,cos(FC_angles),FC_perp1) + ...
@@ -457,7 +460,7 @@ classdef Hopper < handle
       %prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(1,:)-tol, obj.r_data(1,:)+tol), prog.com_inds(1,:));
       %prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(2,:)-tol, obj.r_data(2,:)+tol), prog.com_inds(3,:));
       %prog = prog.addConstraint(BoundingBoxConstraint(obj.k_data-tol, obj.k_data+tol), prog.H_inds(2,:));
-      prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(2,:));
+      prog = prog.addConstraint(BoundingBoxConstraint(obj.r_data(2,:), obj.r_data(2,:)), prog.q_inds(2,:));
       prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(4,:));
       prog = prog.addConstraint(BoundingBoxConstraint(zeros(N,1), zeros(N,1)), prog.q_inds(6,:));
       prog = prog.addConstraint(BoundingBoxConstraint(-pi/8*ones(N,1), pi/8*ones(N,1)), prog.q_inds(5,:));
@@ -478,9 +481,8 @@ classdef Hopper < handle
               lb = [lb(1); -Inf; lb(2)];
               ub = [ub(1); 0; ub(2)];
             end
-            foot_position = zeros(3, 1);
-            foot_position([1, 3]) = foot_positions(:, n, i);
-            xz_error_fcn = drakeFunction.Affine([1, 0, 0; 0, 0, 1], -foot_positions(:, n, i));
+            foot_position = foot_positions(:, n, i);
+            xz_error_fcn = drakeFunction.Affine([1, 0, 0; 0, 0, 1], -foot_positions([1,3], n, i));
             %xz_error_fcn = drakeFunction.Affine(eye(3), -foot_position);
             norm_squared_fcn = drakeFunction.euclidean.NormSquared(2);
             cost = DrakeFunctionConstraint(-Inf, Inf, norm_squared_fcn(xz_error_fcn(foot_position_fcn{i,k})));
@@ -493,7 +495,6 @@ classdef Hopper < handle
       end
       for j = 1:numel(obj.regions)
         A = [obj.regions(j).A; obj.regions(j).Aeq; -obj.regions(j).Aeq]./obj.leg_length;
-        A = [A(:, 1), zeros(size(A,1), 1), A(:, 2)];
         b = [obj.regions(j).b; obj.regions(j).beq; -obj.regions(j).beq];
         region_fcn = drakeFunction.Affine(A, -b);
         lb = -Inf(size(b));
@@ -555,8 +556,7 @@ classdef Hopper < handle
         %q_seed([1, 3], :) = obj.r_data;
         %q_seed(5, :) = obj.th_data;
         v_seed = gradient(q_seed);
-        com_seed = zeros(3, N);
-        com_seed([1, 3], :) = obj.r_data;
+        com_seed = obj.r_data;
         comdot_seed = zeros(3, N);
         comdot_seed([1, 3], :) = obj.v_data;
         comddot_seed = zeros(3, N);
