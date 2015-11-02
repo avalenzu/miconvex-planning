@@ -26,7 +26,7 @@ hop.dtNom = 0.04*(1/sqrt(legLength/9.81))
 hop.rotationMax = np.pi/8
 hop.nOrientationSectors = 1 #int(floor(np.pi/8/desiredPrecision))
 print 'hop.nOrientationSectors = %d' % hop.nOrientationSectors
-hop.velocityMax = 3.
+hop.velocityMax = 9.
 hop.positionMax = 1.5*rf[0]/legLength
 hop.forceMax = 3.
 hop.angularVelocityMax = 5.
@@ -113,7 +113,7 @@ def objRule(m):
                         next_indicator = getattr(m, 'footRegionConstraints[%d,%s,%d]indicator_var' % (region, foot, t+1));
                         footRegionChanges += exprNormLInfinity(m, next_indicator - current_indicator, 1.0)
     #return footRegionChanges + norm(m, m.pd) + norm(m, m.f) + norm(m, m.hipTorque)
-    return 1e1*footRegionChanges + norm(m, m.pdd) + norm(m, m.beta) + norm(m, m.hipTorque)
+    return 1e1*footRegionChanges + norm(m, m.pdd) + norm(m, m.beta) + norm(m, m.T_foot)
 
 m_nlp.Obj = Objective(rule=objRule, sense=minimize)
 

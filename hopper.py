@@ -188,6 +188,8 @@ class Hopper:
         model.hipTorque = Var(model.feet, model.t, bounds=(-self.forceMax, self.forceMax))
         model.beta = Var(model.feet, model.BV_INDEX, model.t, within=NonNegativeReals, bounds=(0, self.forceMax))
         model.T = Var(model.t, bounds=(-self.forceMax, self.forceMax))
+        model.T_foot = Var(model.feet, model.t, bounds=(-self.forceMax, self.forceMax))
+        model.T_region_foot = Var(model.REGION_INDEX, model.feet, model.t, bounds=(-self.forceMax, self.forceMax))
         lb = {'x': -0.5, 'z': -1}
         ub = {'x':  0.5, 'z': -0.85}
         def _pBounds(m, foot, i, t):
@@ -223,7 +225,8 @@ class Hopper:
         model.pwSin = Piecewise(model.t, model.sth, model.th, pw_pts=bpts, pw_constr_type='EQ', pw_repn='CC', f_rule=_sin)
 
         def _momentRule(m, t):
-            return m.T[t] == -sum(m.footRelativeToCOM[foot,'x',t]*m.f[foot,'z',t] - m.footRelativeToCOM[foot,'z',t]*m.f[foot, 'x',t] for foot in m.feet)
+            return m.T[t] == sum(m.T_foot[foot, t] for foot in m.feet)
+            #return m.T[t] == -sum(m.footRelativeToCOM[foot,'x',t]*m.f[foot,'z',t] - m.footRelativeToCOM[foot,'z',t]*m.f[foot, 'x',t] for foot in m.feet)
             #return m.T[t] == sum(m.footRelativeToCOM[foot,'x',t]*m.f[foot,'z',t] - m.footRelativeToCOM[foot,'z',t]*m.f[foot, 'x',t] for foot in m.feet)
 
         model.momentAbountCOM = Constraint(model.t, rule=_momentRule)
@@ -317,6 +320,11 @@ class Hopper:
 
         model.orientationConstraint = Constraint(model.t, rule=_orientationRule)
 
+        def _regionFootRule(m, region, foot, t):
+            return m.T_region_foot[region, foot, t] == sum(m.footRelativeToCOM[foot, 'z', t]*m.beta[foot, bv, t]*m.basisVectors[region, bv, 'x']
+                                                           - m.footRelativeToCOM[foot, 'x', t]*m.beta[foot, bv, t]*m.basisVectors[region, bv, 'z'] for bv in m.BV_INDEX)
+        model.regionFootMomentConstraint = Constraint(model.REGION_INDEX, model.feet, model.t, rule=_regionFootRule)
+
         def _footRegionConstraints(disjunct, region, foot, t):
             m = disjunct.model()
             A = None
@@ -359,6 +367,11 @@ class Hopper:
                 m = disjunctData.model()
                 return m.f[foot, xz, t] == sum(m.beta[foot, bv, t]*m.basisVectors[region, bv, xz] for bv in m.BV_INDEX)
             disjunct.contactForceConstraint = Constraint(m.R2_INDEX, rule=_contactForceConstraint)
+
+            def _contactMomentConstraint(disjunctData):
+                m = disjunctData.model()
+                return m.T_foot[foot, t] == m.T_region_foot[region, foot, t]
+            disjunct.contactMomentConstraint = Constraint(rule=_contactMomentConstraint)
 
             #disjunct.contactForceConstraint1 = Constraint(expr=m.f[foot, 'x', t] <= self.regions[region]['mu']*m.f[foot, 'z', t])
             #disjunct.contactForceConstraint2 = Constraint(expr=m.f[foot, 'x', t] >= -self.regions[region]['mu']*m.f[foot, 'z', t])
