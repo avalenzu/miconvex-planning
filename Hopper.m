@@ -95,7 +95,7 @@ classdef Hopper < handle
       x_min = terrain.x_positions(1);
       x_max = terrain.x_positions(end);
       y_min = 0;
-      y_max = 0.6;
+      y_max = 0.25;
       n_x_samples = ceil((x_max - x_min)/resolution);
       n_y_samples = ceil((y_max - y_min)/resolution);
       x = linspace(x_min, x_max, n_x_samples);
@@ -232,7 +232,7 @@ classdef Hopper < handle
       obj.qtraj = qtraj.setOutputFrame(obj.rbm_vis.getPositionFrame());
       obj.Ftraj = PPTrajectory(zoh(t, reshape(permute(obj.f_data_vis, [1, 3, 2]),[],N)));
 
-      obj.T_actual = sum((obj.p_data(1,:,:)+obj.r_hip_data(1,:,:)).*obj.f_data(2,:,:) - (obj.p_data(2,:,:)+obj.r_hip_data(2,:,:)).*obj.f_data(1,:,:),3);
+      obj.T_actual = -sum((obj.p_data(1,:,:)+obj.r_hip_data(1,:,:)).*obj.f_data(2,:,:) - (obj.p_data(2,:,:)+obj.r_hip_data(2,:,:)).*obj.f_data(1,:,:),3);
     end
 
     function playback(obj, speed, varargin)
