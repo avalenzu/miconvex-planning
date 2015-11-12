@@ -321,15 +321,17 @@ classdef Hopper < handle
       % Constrain hip roll
       posture_constraint = PostureConstraint(robot);
       hip_inds = robot.findPositionIndices('hip_roll');
+      hip_pitch_inds = robot.findPositionIndices('hip_pitch');
       knee_inds = robot.findPositionIndices('knee');
-      joint_inds = [hip_inds; knee_inds];
+      joint_inds = [hip_pitch_inds; hip_inds; knee_inds];
       knee_lb = 60*pi/180;
-      posture_constraint = posture_constraint.setJointLimits(joint_inds, [zeros(size(hip_inds)); -Inf(2,1); knee_lb*ones(2,1)], [zeros(size(hip_inds)); -knee_lb*ones(2,1); Inf(2,1)]);
+      hip_pitch_ub = 80*pi/180;
+      posture_constraint = posture_constraint.setJointLimits(joint_inds, [-hip_pitch_ub*ones(4, 1); zeros(size(hip_inds)); -Inf(2,1); knee_lb*ones(2,1)], [hip_pitch_ub*ones(4, 1); zeros(size(hip_inds)); -knee_lb*ones(2,1); Inf(2,1)]);
       prog = prog.addRigidBodyConstraint(posture_constraint, 1:N);
 
 
       % Add initial conditions
-      %prog = prog.addConstraint(ConstantConstraint(q_nom(:,1)), prog.q_inds(:,1));
+      prog = prog.addConstraint(BoundingBoxConstraint(qstar(7:end)-0.1, qstar(7:end)+0.1), prog.q_inds(7:end,1));
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.H_inds(:,1));
       prog = prog.addConstraint(ConstantConstraint(zeros(3,1)), prog.Hdot_inds(:,1));
       prog = prog.addConstraint(ConstantConstraint(obj.r_data(1,1)), prog.com_inds(1,1));

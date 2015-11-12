@@ -30,7 +30,7 @@ hop.velocityMax = 3.
 hop.positionMax = 1.5*rf[0]/legLength
 hop.forceMax = 3.
 hop.angularVelocityMax = 5.
-addThreePlatfomWorld(hop, legLength, 0.25*legLength)
+addThreePlatfomWorld(hop, legLength, 0.3*legLength)
 #addFlatWorld(hop, legLength)
 hop.constructVisualizer()
 m_nlp = hop.constructPyomoModel()
@@ -188,7 +188,7 @@ opt_nlp = SolverFactory('ipopt')
 opt_minlp = constructCouenneSolver()
 
 #opt = constructGurobiSolver(mipgap=0.8, MIPFocus=1, TimeLimit=90., Threads=11)
-opt = constructGurobiSolver(mipgap=0.5, TimeLimit=480., Threads=11)
+opt = constructGurobiSolver(TimeLimit=480., Threads=11)
 #opt = constructGurobiSolver(TimeLimit=50., Threads=11)
 
 hop.constructVisualizer()
