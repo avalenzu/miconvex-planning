@@ -81,7 +81,7 @@ classdef Hopper < handle
       if nargin < 3 || isempty(num_ccw_rotations)
         num_ccw_rotations = zeros(size(terrain_name));
       elseif iscell(num_ccw_rotations)
-        num_ccw_rotations = cell2mat(num_ccw_rotations)
+        num_ccw_rotations = cell2mat(num_ccw_rotations);
       end
       if nargin < 4 || isempty(resolution), resolution = 0.01; end
       if nargin < 5 || isempty(threshold), threshold = 4e-3; end
@@ -95,7 +95,7 @@ classdef Hopper < handle
       x_min = terrain.x_positions(1);
       x_max = terrain.x_positions(end);
       y_min = 0;
-      y_max = 0.25;
+      y_max = 0.5;
       n_x_samples = ceil((x_max - x_min)/resolution);
       n_y_samples = ceil((y_max - y_min)/resolution);
       x = linspace(x_min, x_max, n_x_samples);

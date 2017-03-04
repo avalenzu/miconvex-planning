@@ -33,7 +33,7 @@ hop.angularVelocityMax = 5.
 hop.addLittleDogTerrain(['terrainO', 'terrainB', 'terrainO'], [0., 0., 0.], 0.02, 5e-3, 20.)
 #addThreePlatfomWorld(hop, legLength, 0.25*legLength)
 #addFlatWorld(hop, legLength)
-hop.constructVisualizer()
+#hop.constructVisualizer()
 m_nlp = hop.constructPyomoModel()
 def normL2(m, var):
     index = var.index_set()
@@ -192,4 +192,4 @@ opt_minlp = constructCouenneSolver()
 opt = constructGurobiSolver(mipgap=0.5, TimeLimit=3600., Threads=11)
 #opt = constructGurobiSolver(TimeLimit=50., Threads=11)
 
-hop.constructVisualizer()
+#hop.constructVisualizer()
